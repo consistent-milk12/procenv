@@ -1,0 +1,5 @@
+error: Duplicate option: `var`
+ --> tests/compile_fail/duplicate_option.rs:7:25
+  |
+7 |     #[env(var = "PORT", var = "OTHER_PORT")]
+  |                         ^^^

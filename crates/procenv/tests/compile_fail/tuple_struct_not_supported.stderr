@@ -1,0 +1,5 @@
+error: EnvConfig does not support tuple structs
+ --> tests/compile_fail/tuple_struct_not_supported.rs:6:1
+  |
+6 | struct Config(String, u16);
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^

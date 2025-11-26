@@ -1,0 +1,5 @@
+error: Unknown option `unknown_option`
+ --> tests/compile_fail/unknown_option.rs:7:25
+  |
+7 |     #[env(var = "PORT", unknown_option)]
+  |                         ^^^^^^^^^^^^^^

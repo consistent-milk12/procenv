@@ -1,0 +1,8 @@
+error: EnvConfig can only be derived for structs, not unions
+ --> tests/compile_fail/union_not_supported.rs:6:1
+  |
+6 | / union Config {
+7 | |     int_val: u32,
+8 | |     float_val: f32,
+9 | | }
+  | |_^

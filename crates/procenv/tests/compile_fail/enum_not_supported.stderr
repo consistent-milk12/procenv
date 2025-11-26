@@ -1,0 +1,8 @@
+error: EnvConfig can only be derived for structs, not enums
+ --> tests/compile_fail/enum_not_supported.rs:6:1
+  |
+6 | / enum Config {
+7 | |     Development,
+8 | |     Production,
+9 | | }
+  | |_^

@@ -1,0 +1,72 @@
+[package]
+name = "procenv"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["secrecy", "dotenv"]
+# Enable secrecy::Secret<T> support for secret fields
+secrecy = ["dep:secrecy"]
+# Enable clap integration for CLI + env config
+clap = ["dep:clap"]
+# Enable validation attributes
+validator = ["dep:validator"]
+# Enable .env file loading (Phase 9)
+dotenv = ["dep:dotenvy"]
+# Enable serde serialization for config structs
+serde = ["dep:serde", "dep:serde_json"]
+# Enable tracing instrumentation
+tracing = ["dep:tracing"]
+# Enable figment for layered configuration
+figment = ["dep:figment"]
+
+# File format support (Phase 13)
+# Enable file-based configuration loading
+file = ["dep:serde", "dep:serde_json"]
+# Enable TOML file support
+toml = ["file", "dep:toml"]
+# Enable YAML file support (uses serde-saphyr, the modern serde_yaml replacement)
+yaml = ["file", "dep:serde-saphyr"]
+# Enable JSON file support (included in file feature)
+json = ["file"]
+# Enable all file formats
+file-all = ["toml", "yaml", "json"]
+
+# Enable all features
+full = ["secrecy", "clap", "validator", "dotenv", "serde", "tracing", "figment", "file-all"]
+
+[dependencies]
+procenv_macro = { path = "../procenv_macro" }
+miette = { workspace = true }
+thiserror = { workspace = true }
+
+# Optional high-value dependencies
+secrecy = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+validator = { workspace = true, optional = true }
+
+# Optional medium-complexity dependencies
+dotenvy = { workspace = true, optional = true }
+figment = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+
+# File format dependencies (Phase 13)
+toml = { workspace = true, optional = true }
+serde-saphyr = { workspace = true, optional = true }
+
+[dev-dependencies]
+trybuild = "1.0.114"
+validator = { workspace = true }
+figment = { workspace = true }
+config = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+serde-saphyr = { workspace = true }
+clap = { workspace = true }
+
+[[example]]
+name = "file_config"
+required-features = ["file-all"]

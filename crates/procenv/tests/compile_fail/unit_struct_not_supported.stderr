@@ -1,0 +1,5 @@
+error: EnvConfig does not support unit structs
+ --> tests/compile_fail/unit_struct_not_supported.rs:6:1
+  |
+6 | struct Config;
+  | ^^^^^^^^^^^^^^

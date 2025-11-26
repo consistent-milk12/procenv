@@ -1,0 +1,5 @@
+error: Field marked `optional` must have type `Option<T>`
+ --> tests/compile_fail/optional_requires_option_type.rs:8:14
+  |
+8 |     api_key: String,
+  |              ^^^^^^

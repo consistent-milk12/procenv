@@ -1,0 +1,7 @@
+/target
+/source
+
+# Markdown files (except README.md)
+*.md
+!README.md
+docs/

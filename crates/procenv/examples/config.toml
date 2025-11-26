@@ -1,0 +1,11 @@
+# Example config file for file configuration
+# This file is loaded by the file_config example
+
+name = "app-from-toml"
+port = 8080
+debug = false
+
+[database]
+host = "localhost"
+port = 5432
+name = "myapp_db"

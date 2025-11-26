@@ -1,0 +1,5 @@
+error: Missing required `var` option
+ --> tests/compile_fail/missing_var_option.rs:7:5
+  |
+7 |     #[env(default = "8080")]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^

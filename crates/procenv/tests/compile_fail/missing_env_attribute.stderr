@@ -1,0 +1,5 @@
+error: Field `db_url` is missing #[env(...)] attribute
+ --> tests/compile_fail/missing_env_attribute.rs:7:5
+  |
+7 |     db_url: String,
+  |     ^^^^^^^^^^^^^^

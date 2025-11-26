@@ -1,0 +1,5 @@
+error: Cannot use both `default` and `optional` on the same field
+ --> tests/compile_fail/default_and_optional_conflict.rs:7:5
+  |
+7 |     #[env(var = "API_KEY", default = "key", optional)]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
