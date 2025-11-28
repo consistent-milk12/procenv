@@ -5,6 +5,7 @@ edition.workspace = true
 license = "MIT"
 description = "Derive macro for declarative environment variable configuration with error accumulation and rich diagnostics"
 repository = "https://github.com/consistent-milk5/procenv"
+readme = "../../README.md"
 keywords = ["env", "config", "macro", "derive", "environment"]
 categories = ["config", "development-tools::procedural-macro-helpers"]
 
@@ -39,7 +40,7 @@ file-all = ["toml", "yaml", "json"]
 full = ["secrecy", "clap", "validator", "dotenv", "serde", "tracing", "file-all"]
 
 [dependencies]
-procenv_macro = { version = "0.1.0", path = "../procenv_macro" }
+procenv_macro = { version = "0.1.1", path = "../procenv_macro" }
 miette = { workspace = true }
 thiserror = { workspace = true }
 
