@@ -2,6 +2,11 @@
 name = "procenv"
 version.workspace = true
 edition.workspace = true
+license = "MIT"
+description = "Derive macro for declarative environment variable configuration with error accumulation and rich diagnostics"
+repository = "https://github.com/consistent-milk5/procenv"
+keywords = ["env", "config", "macro", "derive", "environment"]
+categories = ["config", "development-tools::procedural-macro-helpers"]
 
 [features]
 default = ["secrecy", "dotenv"]
@@ -17,8 +22,6 @@ dotenv = ["dep:dotenvy"]
 serde = ["dep:serde", "dep:serde_json"]
 # Enable tracing instrumentation
 tracing = ["dep:tracing"]
-# Enable figment for layered configuration
-figment = ["dep:figment"]
 
 # File format support (Phase 13)
 # Enable file-based configuration loading
@@ -33,10 +36,10 @@ json = ["file"]
 file-all = ["toml", "yaml", "json"]
 
 # Enable all features
-full = ["secrecy", "clap", "validator", "dotenv", "serde", "tracing", "figment", "file-all"]
+full = ["secrecy", "clap", "validator", "dotenv", "serde", "tracing", "file-all"]
 
 [dependencies]
-procenv_macro = { path = "../procenv_macro" }
+procenv_macro = { version = "0.1.0", path = "../procenv_macro" }
 miette = { workspace = true }
 thiserror = { workspace = true }
 
@@ -47,7 +50,6 @@ validator = { workspace = true, optional = true }
 
 # Optional medium-complexity dependencies
 dotenvy = { workspace = true, optional = true }
-figment = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
@@ -59,8 +61,6 @@ serde-saphyr = { workspace = true, optional = true }
 [dev-dependencies]
 trybuild = "1.0.114"
 validator = { workspace = true }
-figment = { workspace = true }
-config = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }

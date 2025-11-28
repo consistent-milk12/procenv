@@ -2,6 +2,11 @@
 name = "procenv_macro"
 version.workspace = true
 edition.workspace = true
+license = "MIT"
+description = "Procedural macro implementation for procenv"
+repository = "https://github.com/consistent-milk5/procenv"
+keywords = ["env", "config", "macro", "derive", "environment"]
+categories = ["config", "development-tools::procedural-macro-helpers"]
 
 [lib]
 proc-macro = true
