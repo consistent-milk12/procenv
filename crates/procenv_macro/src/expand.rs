@@ -630,6 +630,35 @@ impl Expander {
             }
         };
 
+        // Generate source tracking entries for from_config_with_sources
+        let source_entries: Vec<QuoteStream> = generators
+            .iter()
+            .map(|g| {
+                let field_name = g.name().to_string();
+                let env_var = g.env_var_name().unwrap_or("");
+                let has_default = g.default_value().is_some();
+
+                // Determine source based on: env var set > file origin > default
+                quote! {
+                    {
+                        let source = if std::env::var(#env_var).is_ok() {
+                            ::procenv::Source::Environment
+                        } else if let Some(file_path) = __origins.get_file_source(#field_name) {
+                            ::procenv::Source::ConfigFile(Some(file_path))
+                        } else if #has_default {
+                            ::procenv::Source::Default
+                        } else {
+                            ::procenv::Source::NotSet
+                        };
+                        __sources.add(
+                            #field_name,
+                            ::procenv::ValueSource::new(#env_var, source)
+                        );
+                    }
+                }
+            })
+            .collect();
+
         quote! {
             impl #impl_generics #struct_name #type_generics #where_clause
             where
@@ -671,6 +700,48 @@ impl Expander {
 
                     // Build and deserialize
                     builder.build()
+                }
+
+                /// Load configuration from files and environment variables with source attribution.
+                ///
+                /// This method works like `from_config()` but also returns information
+                /// about where each configuration value came from.
+                ///
+                /// # Returns
+                ///
+                /// A tuple of:
+                /// - The configuration struct
+                /// - `ConfigSources` indicating the origin of each field
+                ///
+                /// # Example
+                ///
+                /// ```ignore
+                /// let (config, sources) = Config::from_config_with_sources()?;
+                /// println!("{}", sources);  // Shows where each value came from
+                /// ```
+                pub fn from_config_with_sources() -> std::result::Result<(Self, ::procenv::ConfigSources), ::procenv::Error> {
+                    // Load .env file(s) first so env vars are available
+                    #dotenv_load
+
+                    let mut builder = ::procenv::ConfigBuilder::new();
+
+                    // Apply macro-level defaults
+                    #defaults_setup
+
+                    // Add config files
+                    #(#file_loads)*
+
+                    // Set env prefix for env var overlay
+                    #env_prefix
+
+                    // Build and deserialize with origin tracking
+                    let (__config, __origins) = builder.build_with_origins()?;
+
+                    // Build source attribution
+                    let mut __sources = ::procenv::ConfigSources::new();
+                    #(#source_entries)*
+
+                    std::result::Result::Ok((__config, __sources))
                 }
             }
         }

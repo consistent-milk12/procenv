@@ -300,6 +300,39 @@ impl OriginTracker {
         // Fall back to most recent source
         self.sources.last()
     }
+
+    /// Check if a field came from a configuration file.
+    ///
+    /// Returns the file path if the field was explicitly loaded from a file.
+    /// Does not return a fallback - only returns Some if the field is actually tracked.
+    pub fn get_file_source(&self, field_name: &str) -> Option<PathBuf> {
+        // Only return if we have an exact match or parent match in origins
+        // Do NOT use the fallback to most recent source
+        if let Some(origin) = self.origins.get(field_name) {
+            return Some(PathBuf::from(&origin.file_path));
+        }
+
+        // Try parent paths (for nested fields)
+        let mut current = field_name.to_string();
+        while let Some(dot_pos) = current.rfind('.') {
+            current = current[..dot_pos].to_string();
+            if let Some(origin) = self.origins.get(&current) {
+                return Some(PathBuf::from(&origin.file_path));
+            }
+        }
+
+        None
+    }
+
+    /// Check if any files were loaded.
+    pub fn has_file_sources(&self) -> bool {
+        !self.sources.is_empty()
+    }
+
+    /// Get all tracked field paths.
+    pub fn tracked_fields(&self) -> impl Iterator<Item = &str> {
+        self.origins.keys().map(|s| s.as_str())
+    }
 }
 
 // ============================================================================
@@ -370,8 +403,17 @@ impl ConfigBuilder {
         self
     }
 
-    pub fn env_seperator(mut self, seperator: impl Into<String>) -> Self {
-        self.env_separator = seperator.into();
+    /// Set the environment variable separator for nested keys.
+    ///
+    /// When reading environment variables for nested configuration, this separator
+    /// is used to split the variable name into nested keys. Default is "_".
+    ///
+    /// # Example
+    ///
+    /// With separator "_" and prefix "APP_":
+    /// - `APP_DATABASE_HOST` becomes `database.host`
+    pub fn env_separator(mut self, separator: impl Into<String>) -> Self {
+        self.env_separator = separator.into();
 
         self
     }
@@ -406,6 +448,21 @@ impl ConfigBuilder {
     }
 
     pub fn build<T: DeserializeOwned>(self) -> Result<T, Error> {
+        let (result, _origins) = self.build_with_origins()?;
+        Ok(result)
+    }
+
+    /// Build the configuration and return origin tracking information.
+    ///
+    /// This method is useful when you need to know where each configuration
+    /// value came from (which file, environment variable, or default).
+    ///
+    /// # Returns
+    ///
+    /// A tuple of:
+    /// - The deserialized configuration struct
+    /// - An `OriginTracker` that records which file each value came from
+    pub fn build_with_origins<T: DeserializeOwned>(self) -> Result<(T, OriginTracker), Error> {
         use serde::de::IntoDeserializer;
 
         let (merged, origins) = self.merge()?;
@@ -413,7 +470,7 @@ impl ConfigBuilder {
         // Use serde_path_to_error to get exact path on failure
         let deserialier: SJSON::Value = merged.into_deserializer();
 
-        serde_path_to_error::deserialize(deserialier).map_err(|e| {
+        let result = serde_path_to_error::deserialize(deserialier).map_err(|e| {
             let path = e.path().to_string();
             let inner_msg = e.inner().to_string();
 
@@ -421,17 +478,18 @@ impl ConfigBuilder {
             if let Some(origin) = origins.find_origin(&path)
                 && let Some(file_error) = FileUtils::type_mismatch_error(&path, &inner_msg, origin)
             {
-                return file_error.into();
+                return Error::from(file_error);
             }
 
             // Fallback to no span
-            FileError::ParseNoSpan {
+            Error::from(FileError::ParseNoSpan {
                 format: "JSON",
                 message: format!("at `{}`: {}", path, inner_msg),
                 help: "check that the config file values match the expected types".to_string(),
-            }
-            .into()
-        })
+            })
+        })?;
+
+        Ok((result, origins))
     }
 }
 

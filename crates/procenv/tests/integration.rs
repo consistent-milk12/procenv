@@ -890,4 +890,53 @@ mod from_config_tests {
 
         cleanup_env();
     }
+
+    #[test]
+    #[serial]
+    fn test_from_config_with_sources() {
+        cleanup_test_file();
+        cleanup_env();
+
+        // Create config file with some values
+        let config_content = r#"{"name": "file-app", "port": 3000}"#;
+        fs::write("/tmp/procenv_test_config.json", config_content).unwrap();
+
+        // Set env var to override port
+        unsafe {
+            std::env::set_var("FCONFIG_PORT", "9000");
+        }
+
+        let (config, sources) =
+            FromConfigTest::from_config_with_sources().expect("should load with sources");
+
+        // Verify config values
+        assert_eq!(config.name, "file-app");
+        assert_eq!(config.port, 9000); // from env
+        assert!(!config.debug); // from default
+
+        // Verify sources
+        let name_source = sources.get("name").expect("should have name source");
+        assert!(
+            matches!(name_source.source, procenv::Source::ConfigFile(_)),
+            "name should come from config file, got {:?}",
+            name_source.source
+        );
+
+        let port_source = sources.get("port").expect("should have port source");
+        assert!(
+            matches!(port_source.source, procenv::Source::Environment),
+            "port should come from environment, got {:?}",
+            port_source.source
+        );
+
+        let debug_source = sources.get("debug").expect("should have debug source");
+        assert!(
+            matches!(debug_source.source, procenv::Source::Default),
+            "debug should come from default, got {:?}",
+            debug_source.source
+        );
+
+        cleanup_test_file();
+        cleanup_env();
+    }
 }

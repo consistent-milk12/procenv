@@ -151,21 +151,51 @@ struct Config {
 Load configuration from files with environment variable overrides:
 
 ```rust
-use procenv::ConfigBuilder;
+use procenv::{EnvConfig, ConfigBuilder};
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+// Using the derive macro with file support
+#[derive(EnvConfig, Deserialize)]
+#[env_config(
+    prefix = "APP_",
+    file_optional = "config.toml",
+    dotenv
+)]
 struct Config {
+    #[env(var = "DATABASE_URL")]
     database_url: String,
+
+    #[env(var = "PORT", default = "8080")]
     port: u16,
+
+    #[env(var = "DEBUG", default = "false")]
     debug: bool,
 }
 
+// Load with layered priority: defaults < file < env
+let config = Config::from_config()?;
+
+// Or with source attribution
+let (config, sources) = Config::from_config_with_sources()?;
+```
+
+### Using ConfigBuilder Directly
+
+For more control, use `ConfigBuilder`:
+
+```rust
 let config: Config = ConfigBuilder::new()
     .file("config.toml")                    // Base configuration
     .file_optional("config.local.toml")     // Local overrides (gitignored)
     .env_prefix("APP_")                     // Environment overrides
+    .env_separator("__")                    // Custom separator (default: "_")
     .build()?;
+
+// With origin tracking
+let (config, origins) = ConfigBuilder::new()
+    .file("config.toml")
+    .env_prefix("APP_")
+    .build_with_origins()?;
 ```
 
 ### File Error Diagnostics
@@ -187,7 +217,12 @@ Type mismatches show the exact location in your config file:
 Track where each configuration value originated:
 
 ```rust
+// For environment-based loading
 let (config, sources) = Config::from_env_with_sources()?;
+
+// For file-based loading
+let (config, sources) = Config::from_config_with_sources()?;
+
 println!("{}", sources);
 ```
 
@@ -197,10 +232,12 @@ Output:
 Configuration Source:
 --------------------------------------------------
   database_url  <- Environment variable [DATABASE_URL]
-  port          <- Default value [PORT]
+  port          <- Config file (config.toml) [PORT]
   api_key       <- .env file [API_KEY]
-  debug         <- Profile (dev) [DEBUG]
+  debug         <- Default value [DEBUG]
 ```
+
+Sources include: `Environment`, `ConfigFile`, `DotenvFile`, `Profile`, `Default`, `Cli`, and `NotSet`.
 
 ## .env.example Generation
 
@@ -339,19 +376,31 @@ procenv/
 └── PROGRESS.md            # Development roadmap
 ```
 
+## Generated Methods
+
+The `#[derive(EnvConfig)]` macro generates these methods:
+
+| Method | Description |
+|--------|-------------|
+| `from_env()` | Load from environment variables |
+| `from_env_with_sources()` | Load with source attribution |
+| `from_config()` | Load from files + env (requires `file` feature) |
+| `from_config_with_sources()` | File loading with source attribution |
+| `from_args()` | Load from CLI args + env (requires `clap` feature) |
+| `env_example()` | Generate `.env.example` content |
+| `sources()` | Get source attribution only |
+
 ## Development Status
 
 **Phase A.0 (Correctness Sprint): COMPLETE** ✅
 
 All correctness issues have been resolved:
 - ✅ Error accumulation with miette diagnostics
-- ✅ Source attribution (env, file, profile, default, CLI)
+- ✅ Source attribution for all loading methods
 - ✅ Profile support with correct source tracking
 - ✅ File configs with type mismatch spans
-- ✅ `from_config()` honors macro-level defaults
+- ✅ `from_config()` and `from_config_with_sources()` with full attribution
 - ✅ CLI parse errors show target types
-
-**Next:** Phase A - Production Ready (documentation, test coverage)
 
 See [PROGRESS.md](PROGRESS.md) for the full roadmap.
 

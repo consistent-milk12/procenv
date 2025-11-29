@@ -9,7 +9,7 @@ pub use secrecy::{ExposeSecret, ExposeSecretMut, SecretBox, SecretString};
 #[cfg(feature = "file")]
 pub mod file;
 #[cfg(feature = "file")]
-pub use file::{ConfigBuilder, FileFormat, FileUtils};
+pub use file::{ConfigBuilder, FileFormat, FileUtils, OriginTracker};
 
 use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
@@ -435,24 +435,6 @@ impl ConfigSources {
         self.entries
             .iter()
             .map(|(name, source)| (name.as_str(), source))
-    }
-
-    pub fn check_env_source(var_name: &str, dotenv_loaded: bool) -> Source {
-        match std::env::var(var_name) {
-            Ok(_) => {
-                // Variable exists - but we need to know if it came from .env
-                // Since dotenvy sets vars in the environment, we track separately
-                if dotenv_loaded {
-                    // Could be from .env or pre-existing env
-                    // For now, we check if it was set before dotenv
-                    Source::Environment
-                } else {
-                    Source::Environment
-                }
-            }
-
-            Err(_) => Source::NotSet,
-        }
     }
 }
 
