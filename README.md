@@ -220,7 +220,7 @@ Track where each configuration value originated:
 // For environment-based loading
 let (config, sources) = Config::from_env_with_sources()?;
 
-// For file-based loading
+// For file-based loading (with nested field support)
 let (config, sources) = Config::from_config_with_sources()?;
 
 println!("{}", sources);
@@ -231,13 +231,20 @@ Output:
 ```
 Configuration Source:
 --------------------------------------------------
-  database_url  <- Environment variable [DATABASE_URL]
-  port          <- Config file (config.toml) [PORT]
-  api_key       <- .env file [API_KEY]
-  debug         <- Default value [DEBUG]
+  database_url    <- Environment variable [DATABASE_URL]
+  port            <- Config file (config.toml) [PORT]
+  api_key         <- .env file [API_KEY]
+  debug           <- Default value [DEBUG]
+  database.host   <- Config file (config.toml) [database.host]
+  database.port   <- Config file (config.toml) [database.port]
 ```
 
 Sources include: `Environment`, `ConfigFile`, `DotenvFile`, `Profile`, `Default`, `Cli`, and `NotSet`.
+
+**Key features:**
+- Nested fields are individually attributed (e.g., `database.host`, `database.port`)
+- `.env` files are distinguished from OS environment variables
+- Full attribution across all loading methods (`from_env`, `from_config`, `from_args`)
 
 ## .env.example Generation
 
@@ -380,27 +387,31 @@ procenv/
 
 The `#[derive(EnvConfig)]` macro generates these methods:
 
-| Method | Description |
-|--------|-------------|
-| `from_env()` | Load from environment variables |
-| `from_env_with_sources()` | Load with source attribution |
-| `from_config()` | Load from files + env (requires `file` feature) |
-| `from_config_with_sources()` | File loading with source attribution |
-| `from_args()` | Load from CLI args + env (requires `clap` feature) |
-| `env_example()` | Generate `.env.example` content |
-| `sources()` | Get source attribution only |
+| Method                       | Description                                        |
+| ---------------------------- | -------------------------------------------------- |
+| `from_env()`                 | Load from environment variables                    |
+| `from_env_with_sources()`    | Load with source attribution                       |
+| `from_config()`              | Load from files + env (requires `file` feature)    |
+| `from_config_with_sources()` | File loading with source attribution               |
+| `from_args()`                | Load from CLI args + env (requires `clap` feature) |
+| `env_example()`              | Generate `.env.example` content                    |
+| `sources()`                  | Get source attribution only                        |
 
 ## Development Status
 
 **Phase A.0 (Correctness Sprint): COMPLETE** ✅
 
 All correctness issues have been resolved:
+
 - ✅ Error accumulation with miette diagnostics
 - ✅ Source attribution for all loading methods
 - ✅ Profile support with correct source tracking
 - ✅ File configs with type mismatch spans
 - ✅ `from_config()` and `from_config_with_sources()` with full attribution
 - ✅ CLI parse errors show target types
+- ✅ Nested field attribution (flattened fields individually attributed)
+- ✅ Dotenv provenance tracking (`.env` vs OS environment distinguished)
+- ✅ CLI/nested config source fidelity
 
 See [PROGRESS.md](PROGRESS.md) for the full roadmap.
 

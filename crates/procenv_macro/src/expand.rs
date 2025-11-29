@@ -597,6 +597,27 @@ impl Expander {
         // Generate dotenv loading (before ConfigBuilder so env vars are available)
         let dotenv_load = Self::generate_dotenv_load(&env_config_attr.dotenv);
 
+        // Collect all env var names for pre-dotenv check (for dotenv provenance tracking)
+        let env_var_names: Vec<_> = generators.iter().filter_map(|g| g.env_var_name()).collect();
+
+        // Generate pre-dotenv var collection
+        let pre_dotenv_collection = quote! {
+            let __pre_dotenv_vars: std::collections::HashSet<&str> = [
+                #(#env_var_names),*
+            ]
+            .iter()
+            .filter(|var| std::env::var(var).is_ok())
+            .copied()
+            .collect();
+        };
+
+        // Track if dotenv was loaded
+        let dotenv_loaded_flag = if env_config_attr.dotenv.is_some() {
+            quote! { let __dotenv_loaded = true; }
+        } else {
+            quote! { let __dotenv_loaded = false; }
+        };
+
         // Generate default values for fields that have them
         // This ensures #[env(default = "...")] works with from_config()
         let default_entries: Vec<QuoteStream> = generators
@@ -631,29 +652,68 @@ impl Expander {
         };
 
         // Generate source tracking entries for from_config_with_sources
+        // Now with dotenv provenance tracking and nested field support
         let source_entries: Vec<QuoteStream> = generators
             .iter()
             .map(|g| {
                 let field_name = g.name().to_string();
-                let env_var = g.env_var_name().unwrap_or("");
                 let has_default = g.default_value().is_some();
 
-                // Determine source based on: env var set > file origin > default
-                quote! {
-                    {
-                        let source = if std::env::var(#env_var).is_ok() {
-                            ::procenv::Source::Environment
-                        } else if let Some(file_path) = __origins.get_file_source(#field_name) {
-                            ::procenv::Source::ConfigFile(Some(file_path))
-                        } else if #has_default {
-                            ::procenv::Source::Default
-                        } else {
-                            ::procenv::Source::NotSet
-                        };
-                        __sources.add(
-                            #field_name,
-                            ::procenv::ValueSource::new(#env_var, source)
-                        );
+                if g.is_flatten() {
+                    // For flatten fields, iterate through tracked origins with this prefix
+                    // to get individual nested field sources
+                    quote! {
+                        {
+                            let prefix = concat!(#field_name, ".");
+                            for tracked_path in __origins.tracked_fields() {
+                                if tracked_path.starts_with(prefix) || tracked_path == #field_name {
+                                    // Extract the nested field name (e.g., "database.port" -> "port")
+                                    let nested_name = if tracked_path == #field_name {
+                                        tracked_path.to_string()
+                                    } else {
+                                        tracked_path.to_string()
+                                    };
+
+                                    let source = if let Some(file_path) = __origins.get_file_source(tracked_path) {
+                                        ::procenv::Source::ConfigFile(Some(file_path))
+                                    } else {
+                                        ::procenv::Source::NotSet
+                                    };
+
+                                    __sources.add(
+                                        nested_name,
+                                        ::procenv::ValueSource::new(tracked_path, source)
+                                    );
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    let env_var = g.env_var_name().unwrap_or("");
+
+                    // Determine source based on: env var set > file origin > default
+                    // Now with dotenv provenance tracking
+                    quote! {
+                        {
+                            let source = if std::env::var(#env_var).is_ok() {
+                                // Check if this was from dotenv or real environment
+                                if __dotenv_loaded && !__pre_dotenv_vars.contains(#env_var) {
+                                    ::procenv::Source::DotenvFile(None)
+                                } else {
+                                    ::procenv::Source::Environment
+                                }
+                            } else if let Some(file_path) = __origins.get_file_source(#field_name) {
+                                ::procenv::Source::ConfigFile(Some(file_path))
+                            } else if #has_default {
+                                ::procenv::Source::Default
+                            } else {
+                                ::procenv::Source::NotSet
+                            };
+                            __sources.add(
+                                #field_name,
+                                ::procenv::ValueSource::new(#env_var, source)
+                            );
+                        }
                     }
                 }
             })
@@ -720,8 +780,14 @@ impl Expander {
                 /// println!("{}", sources);  // Shows where each value came from
                 /// ```
                 pub fn from_config_with_sources() -> std::result::Result<(Self, ::procenv::ConfigSources), ::procenv::Error> {
+                    // Track pre-dotenv env vars for dotenv provenance attribution
+                    #pre_dotenv_collection
+
                     // Load .env file(s) first so env vars are available
                     #dotenv_load
+
+                    // Track if dotenv was loaded
+                    #dotenv_loaded_flag
 
                     let mut builder = ::procenv::ConfigBuilder::new();
 
