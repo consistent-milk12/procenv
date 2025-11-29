@@ -48,7 +48,7 @@ full = [
 ]
 
 [dependencies]
-procenv_macro = { version = "0.1.1", path = "../procenv_macro" }
+procenv_macro = { version = "0.1.2", path = "../procenv_macro" }
 miette = { workspace = true }
 thiserror = { workspace = true }
 
