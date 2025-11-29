@@ -1,0 +1,11 @@
+# Nextest configuration
+# See: https://nexte.st/docs/configuration/
+
+[test-groups.serial-integration]
+# Run these tests with max 1 thread to avoid file/env race conditions
+max-threads = 1
+
+[[profile.default.overrides]]
+# Tests in from_config_tests module share a temp file and env vars
+filter = "test(/from_config_tests/)"
+test-group = "serial-integration"
