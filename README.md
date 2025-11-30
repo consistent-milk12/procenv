@@ -101,6 +101,8 @@ Default features: `secrecy`, `dotenv`, `file-all`, `clap`
 | `tracing`   | No        | Tracing instrumentation                             |
 | `provider`  | No        | Provider trait and ConfigLoader                     |
 | `async`     | No        | Async provider support (requires `provider`)        |
+| `watch`     | No        | Hot reload with file watching                       |
+| `watch-async` | No      | Async hot reload (requires `watch` + `async`)       |
 | `full`      | No        | Enable all features                                 |
 
 ## Attribute Reference
@@ -426,6 +428,57 @@ if let Some((value, source)) = loader.get_with_source("DATABASE_URL") {
 
 **Note:** Secret fields return `<redacted>` from `get_str()`. Fields using `format` attribute (serde deserialization) are excluded from runtime access.
 
+## Hot Reload
+
+Watch configuration files for changes and automatically reload:
+
+```rust
+use procenv::WatchBuilder;
+use std::time::Duration;
+
+// Build a file watcher
+let handle = WatchBuilder::new()
+    .watch_file("config.toml")
+    .watch_file("config.local.toml")
+    .debounce(Duration::from_millis(200))
+    .on_change(|change| {
+        println!("Config reloaded: {}", change.trigger);
+        if change.field_changed("port") {
+            println!("Port changed - restart server");
+        }
+    })
+    .on_error(|err| {
+        // Previous config remains active on error
+        eprintln!("Reload failed: {}", err);
+    })
+    .build_sync(|| Config::from_config_with_sources())?;
+
+// Access current config (thread-safe)
+let config = handle.get();
+println!("Port: {}", config.port);
+
+// Check for changes via epoch
+let epoch = handle.epoch();
+// ... later ...
+if handle.has_changed_since(epoch) {
+    let new_config = handle.get();
+}
+
+// Manual reload
+handle.reload()?;
+
+// Graceful shutdown
+handle.stop();
+```
+
+**Key features:**
+- **Debouncing** - Handles rapid file saves (default: 100ms)
+- **Error resilience** - Keeps previous valid config on reload error
+- **Thread-safe** - Uses `Arc<RwLock<T>>` for concurrent access
+- **Epoch tracking** - Efficient change detection without callbacks
+
+Run the example: `cargo run --example hot_reload --features watch`
+
 ## Generated Methods
 
 | Method                              | Description                                                                |
@@ -456,7 +509,7 @@ if let Some((value, source)) = loader.get_with_source("DATABASE_URL") {
 | File configs            | Yes          | Yes        | Yes        | No     |
 | Custom providers        | **Yes**      | Yes        | Yes        | No     |
 | Runtime value access    | **Yes**      | Yes        | Yes        | No     |
-| Hot reload              | No           | No         | Partial    | No     |
+| Hot reload              | **Yes**      | No         | Partial    | No     |
 
 ## Performance
 
@@ -482,8 +535,8 @@ Run benchmarks: `cargo bench --bench config_loading`
 
 ## Known Limitations
 
-- **No hot reload** - Can't watch for config file changes
 - **Zero production usage** - Untested in real-world applications
+- **Minimal documentation** - No cookbook, migration guides, or comprehensive examples
 
 ## Project Structure
 
@@ -497,7 +550,8 @@ procenv/
 │   │   │   ├── source.rs     # Source attribution types
 │   │   │   ├── loader.rs     # ConfigLoader orchestrator
 │   │   │   ├── file/         # File configuration support
-│   │   │   └── provider/     # Provider extensibility framework
+│   │   │   ├── provider/     # Provider extensibility framework
+│   │   │   └── watch/        # Hot reload with file watching
 │   │   ├── examples/
 │   │   └── tests/
 │   └── procenv_macro/        # Proc-macro implementation
@@ -535,10 +589,10 @@ procenv/
 - Validation integration with `validator` crate
 - Provider extensibility (custom sources like Vault, SSM)
 - Runtime access (`keys()`, `get_str()`, `has_key()`)
+- Hot reload with file watching (`watch` feature)
 
 **Planned (see [PROGRESS.md](PROGRESS.md)):**
 
-- Phase E: Hot reload
 - Phase F: Documentation & examples
 - Phase G: Advanced features (interactive mode, schema export)
 - Phase H: Ecosystem integration (axum, actix, tracing)
