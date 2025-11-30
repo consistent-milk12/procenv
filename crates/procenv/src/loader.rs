@@ -202,8 +202,7 @@ impl ConfigLoader {
             Some(pv) => {
                 pv.value.parse::<T>().map(Some).map_err(|e| {
                     Error::parse(
-                        // This is a limitation - we don't have the static str here
-                        Box::leak(key.to_string().into_boxed_str()),
+                        key.to_string(),
                         pv.value.clone(),
                         pv.secret,
                         std::any::type_name::<T>(),

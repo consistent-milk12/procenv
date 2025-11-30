@@ -142,45 +142,127 @@ impl FieldGenerator for RequiredField {
         let secret = self.secret;
         let type_name = quote!(#ty).to_string();
         let effective_var_ident = format_ident!("__{}_effective_var", name);
+        let profile_used_ident = format_ident!("__{}_from_profile", name);
 
-        quote! {
-            // Build effective env var name with external prefix
-            let #effective_var_ident: std::string::String = format!(
-                "{}{}",
-                __external_prefix.unwrap_or(""),
-                #base_var
-            );
-
-            let #name: std::option::Option<#ty> = match std::env::var(&#effective_var_ident) {
-                std::result::Result::Ok(val) => {
-                    match val.parse::<#ty>() {
-                        std::result::Result::Ok(v) => std::option::Option::Some(v),
-                        std::result::Result::Err(e) => {
-                            __errors.push(::procenv::Error::parse(
-                                &#effective_var_ident,
-                                val,
-                                #secret,
-                                #type_name,
-                                std::boxed::Box::new(e),
-                            ));
-                            std::option::Option::None
-                        }
+        // Check if this field has profile configuration
+        if let Some(profile_config) = &self.profile {
+            // Generate match arms for each profile
+            let match_arms: Vec<QuoteStream> = profile_config
+                .values
+                .iter()
+                .map(|(profile_name, value)| {
+                    quote! {
+                        std::option::Option::Some(#profile_name) => std::option::Option::Some(#value),
                     }
-                }
-                std::result::Result::Err(e) => {
-                    match e {
-                        std::env::VarError::NotPresent => {
-                            __errors.push(::procenv::Error::missing(&#effective_var_ident));
+                })
+                .collect();
+
+            quote! {
+                // Build effective env var name with external prefix
+                let #effective_var_ident: std::string::String = format!(
+                    "{}{}",
+                    __external_prefix.unwrap_or(""),
+                    #base_var
+                );
+
+                // Determine profile default value (if profile matches)
+                let __profile_default: std::option::Option<&str> = match __profile.as_deref() {
+                    #(#match_arms)*
+                    _ => std::option::Option::None,
+                };
+
+                // Get value to parse: env var > profile default > error
+                let (__value_to_parse, #profile_used_ident): (std::option::Option<std::string::String>, bool) =
+                    match std::env::var(&#effective_var_ident) {
+                        std::result::Result::Ok(val) => {
+                            (std::option::Option::Some(val), false)
                         }
-                        std::env::VarError::NotUnicode(_) => {
+                        std::result::Result::Err(std::env::VarError::NotPresent) => {
+                            match __profile_default {
+                                std::option::Option::Some(profile_val) => {
+                                    (std::option::Option::Some(profile_val.to_string()), true)
+                                }
+                                std::option::Option::None => {
+                                    // Required field with no env var and no profile match = error
+                                    (std::option::Option::None, false)
+                                }
+                            }
+                        }
+                        std::result::Result::Err(std::env::VarError::NotUnicode(_)) => {
                             __errors.push(::procenv::Error::InvalidUtf8 {
                                 var: #effective_var_ident.clone(),
                             });
+                            (std::option::Option::None, false)
+                        }
+                    };
+
+                // Parse the value
+                let #name: std::option::Option<#ty> = match __value_to_parse {
+                    std::option::Option::Some(val) => {
+                        match val.parse::<#ty>() {
+                            std::result::Result::Ok(v) => std::option::Option::Some(v),
+                            std::result::Result::Err(e) => {
+                                __errors.push(::procenv::Error::parse(
+                                    &#effective_var_ident,
+                                    if #secret { "[REDACTED]".to_string() } else { val },
+                                    #secret,
+                                    #type_name,
+                                    std::boxed::Box::new(e),
+                                ));
+                                std::option::Option::None
+                            }
                         }
                     }
-                    std::option::Option::None
-                }
-            };
+                    std::option::Option::None => {
+                        __errors.push(::procenv::Error::missing(&#effective_var_ident));
+                        std::option::Option::None
+                    }
+                };
+            }
+        } else {
+            // No profile config - use original simple logic
+            quote! {
+                // Build effective env var name with external prefix
+                let #effective_var_ident: std::string::String = format!(
+                    "{}{}",
+                    __external_prefix.unwrap_or(""),
+                    #base_var
+                );
+
+                // No profile for this field
+                let #profile_used_ident: bool = false;
+
+                let #name: std::option::Option<#ty> = match std::env::var(&#effective_var_ident) {
+                    std::result::Result::Ok(val) => {
+                        match val.parse::<#ty>() {
+                            std::result::Result::Ok(v) => std::option::Option::Some(v),
+                            std::result::Result::Err(e) => {
+                                __errors.push(::procenv::Error::parse(
+                                    &#effective_var_ident,
+                                    val,
+                                    #secret,
+                                    #type_name,
+                                    std::boxed::Box::new(e),
+                                ));
+                                std::option::Option::None
+                            }
+                        }
+                    }
+                    std::result::Result::Err(e) => {
+                        match e {
+                            std::env::VarError::NotPresent => {
+                                __errors.push(::procenv::Error::missing(&#effective_var_ident));
+                            }
+                            std::env::VarError::NotUnicode(_) => {
+                                __errors.push(::procenv::Error::InvalidUtf8 {
+                                    var: #effective_var_ident.clone(),
+                                });
+                            }
+                        }
+                        std::option::Option::None
+                    }
+                };
+            }
         }
     }
 

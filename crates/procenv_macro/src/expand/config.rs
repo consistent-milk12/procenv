@@ -111,6 +111,10 @@ pub fn generate_from_config_impl(
     // Generate dotenv loading
     let dotenv_load = generate_dotenv_load(&env_config_attr.dotenv);
 
+    // Generate profile setup for from_config
+    let (profile_setup, profile_defaults) =
+        generate_profile_defaults_for_config(env_config_attr, generators);
+
     // Collect all env var names for pre-dotenv check
     let env_var_names: Vec<_> = generators.iter().filter_map(|g| g.env_var_name()).collect();
 
@@ -178,13 +182,17 @@ pub fn generate_from_config_impl(
 
     // Determine if we need defaults setup
     let has_flatten = generators.iter().any(|g| g.is_flatten());
-    let defaults_setup = if default_entries.is_empty() && !has_flatten {
+    let has_profile = env_config_attr.profile_env.is_some();
+    let defaults_setup = if default_entries.is_empty() && !has_flatten && !has_profile {
         quote! {}
     } else {
         quote! {
             let mut __defaults = ::serde_json::Map::new();
+            // Apply macro defaults first (lowest priority)
             #(#default_entries)*
             #(#flatten_default_entries)*
+            // Apply profile defaults (override macro defaults)
+            #profile_defaults
             builder = builder.defaults_value(::serde_json::Value::Object(__defaults));
         }
     };
@@ -259,6 +267,8 @@ pub fn generate_from_config_impl(
             pub fn from_config() -> std::result::Result<Self, ::procenv::Error> {
                 #dotenv_load
 
+                #profile_setup
+
                 let mut builder = ::procenv::ConfigBuilder::new();
 
                 #defaults_setup
@@ -280,6 +290,8 @@ pub fn generate_from_config_impl(
 
                 #dotenv_loaded_flag
 
+                #profile_setup
+
                 let mut builder = ::procenv::ConfigBuilder::new();
 
                 #defaults_setup
@@ -299,6 +311,90 @@ pub fn generate_from_config_impl(
             }
         }
     }
+}
+
+/// Generate profile setup code and profile defaults for from_config().
+fn generate_profile_defaults_for_config(
+    env_config_attr: &EnvConfigAttr,
+    generators: &[Box<dyn FieldGenerator>],
+) -> (QuoteStream, QuoteStream) {
+    let Some(profile_env) = &env_config_attr.profile_env else {
+        // No profile configured - return empty setup and defaults
+        return (
+            quote! {
+                let __profile: std::option::Option<std::string::String> = std::option::Option::None;
+            },
+            quote! {},
+        );
+    };
+
+    // Generate profile validation if profiles list is provided
+    let validation = if let Some(profiles) = &env_config_attr.profiles {
+        let profile_strs: Vec<&str> = profiles.iter().map(|s| s.as_str()).collect();
+        quote! {
+            // Validate profile against allowed list
+            if let std::option::Option::Some(ref p) = __profile {
+                let valid_profiles: &[&str] = &[#(#profile_strs),*];
+                if !valid_profiles.contains(&p.as_str()) {
+                    return std::result::Result::Err(::procenv::Error::invalid_profile(
+                        p.clone(),
+                        #profile_env,
+                        valid_profiles.to_vec(),
+                    ));
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    let profile_setup = quote! {
+        // Read profile from environment variable
+        let __profile: std::option::Option<std::string::String> = std::env::var(#profile_env).ok();
+        #validation
+    };
+
+    // Generate profile default entries for fields that have profile config
+    let profile_default_entries: Vec<QuoteStream> = generators
+        .iter()
+        .filter_map(|g| {
+            if g.is_flatten() {
+                return None;
+            }
+
+            let profile_config = g.profile_config()?;
+            let field_name = g.name().to_string();
+
+            // Generate match arms for each profile value
+            let match_arms: Vec<QuoteStream> = profile_config
+                .values
+                .iter()
+                .map(|(profile_name, value)| {
+                    quote! {
+                        std::option::Option::Some(#profile_name) => {
+                            __defaults.insert(
+                                #field_name.to_string(),
+                                ::procenv::FileUtils::coerce_value(#value)
+                            );
+                        }
+                    }
+                })
+                .collect();
+
+            Some(quote! {
+                match __profile.as_deref() {
+                    #(#match_arms)*
+                    _ => {}
+                }
+            })
+        })
+        .collect();
+
+    let profile_defaults = quote! {
+        #(#profile_default_entries)*
+    };
+
+    (profile_setup, profile_defaults)
 }
 
 /// Generate the `__config_defaults()` method for nested struct defaults.
