@@ -87,7 +87,10 @@ pub fn extract_doc_comment(field: &Field) -> Option<String> {
 /// #[env(var = "DATABASE_URL")]  // → FieldConfig::Env(...)
 /// database_url: String,
 ///
-/// #[env(flatten)]               // → FieldConfig::Flatten
+/// #[env(flatten)]               // → FieldConfig::Flatten { prefix: None }
+/// database: DatabaseConfig,
+///
+/// #[env(flatten, prefix = "DB_")]  // → FieldConfig::Flatten { prefix: Some("DB_") }
 /// database: DatabaseConfig,
 /// ```
 pub enum FieldConfig {
@@ -100,7 +103,13 @@ pub enum FieldConfig {
     ///
     /// The nested type must also derive `EnvConfig`. Its fields are
     /// loaded recursively and errors are merged into the parent.
-    Flatten,
+    ///
+    /// The optional `prefix` is prepended to all nested field env var names.
+    Flatten {
+        /// Optional prefix to prepend to nested field env var names.
+        /// Combined with any parent prefix and the struct's own prefix.
+        prefix: Option<String>,
+    },
 }
 
 /// CLI argument configuration for a field.
@@ -219,7 +228,7 @@ pub struct EnvAttr {
 /// - `var` is required for non-flatten fields
 /// - `default` and `optional` cannot be used together
 /// - `short` requires `arg` to be set
-/// - `flatten` cannot be combined with other options
+/// - `flatten` can only be combined with `prefix`
 /// - `format` must be one of: `json`, `toml`, `yaml`
 #[derive(Default)]
 pub struct Parser {
@@ -247,6 +256,10 @@ pub struct Parser {
 
     /// Whether this is a flattened nested config
     flatten: bool,
+
+    /// Prefix for flatten fields (from `prefix = "..."`)
+    /// Only valid when `flatten` is true
+    flatten_prefix: Option<String>,
 
     /// CLI long argument name (from `arg = "..."`)
     arg_long: Option<String>,
@@ -282,6 +295,7 @@ impl Parser {
             "secret" => "secret",
             "no_prefix" => "no_prefix",
             "flatten" => "flatten",
+            "prefix" => "prefix",
             "arg" => "arg",
             "short" => "short",
             "format" => "format",
@@ -326,6 +340,12 @@ impl Parser {
 
             "flatten" => {
                 self.flatten = true;
+            }
+
+            // prefix = "DB_" - prefix for flatten fields
+            "prefix" => {
+                let lit_str: LitStr = meta.value()?.parse()?;
+                self.flatten_prefix = Some(lit_str.value());
             }
 
             // arg = "port" - CLI long argument name
@@ -499,7 +519,7 @@ impl Parser {
 
     /// Build either a Flatten or Env config based on parsed options.
     fn build_config(self, attr: &Attribute) -> SynResult<FieldConfig> {
-        // If flatten is set, validate no other options are used
+        // If flatten is set, validate only `prefix` is allowed as additional option
         if self.flatten {
             if self.var_name.is_some() {
                 return Err(SynError::new_spanned(
@@ -537,8 +557,30 @@ impl Parser {
                     "Cannot use `arg` or `short` with `flatten`",
                 ));
             }
+            if self.format.is_some() {
+                return Err(SynError::new_spanned(
+                    attr,
+                    "Cannot use `format` with `flatten`",
+                ));
+            }
+            if self.validate.is_some() {
+                return Err(SynError::new_spanned(
+                    attr,
+                    "Cannot use `validate` with `flatten`",
+                ));
+            }
 
-            return Ok(FieldConfig::Flatten);
+            return Ok(FieldConfig::Flatten {
+                prefix: self.flatten_prefix,
+            });
+        }
+
+        // `prefix` requires `flatten`
+        if self.flatten_prefix.is_some() {
+            return Err(SynError::new_spanned(
+                attr,
+                "`prefix` can only be used with `flatten`",
+            ));
         }
 
         // Otherwise, build a regular EnvAttr

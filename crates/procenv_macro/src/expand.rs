@@ -153,6 +153,10 @@ impl Expander {
             quote! {}
         };
 
+        // Generate external prefix method for flatten support
+        let external_prefix_impl =
+            Self::generate_from_env_with_external_prefix_impl(struct_name, generics, &generators, &env_config_attr);
+
         let combined = quote! {
             #from_env_impl
             #debug_impl
@@ -161,6 +165,7 @@ impl Expander {
             #config_defaults_impl
             #file_config_impl
             #validated_impl
+            #external_prefix_impl
         };
 
         Ok(combined.into())
@@ -259,6 +264,10 @@ impl Expander {
                 pub fn from_env() -> std::result::Result<Self, ::procenv::Error> {
                     // Load .env file(s) if configured (errors are silently ignored)
                     #dotenv_load
+
+                    // Define external prefix as None for regular from_env calls
+                    // This is used by flatten fields which call __from_env_with_external_prefix
+                    let __external_prefix: std::option::Option<&str> = std::option::Option::None;
 
                     // Accumulator for all errors encountered during loading
                     let mut __errors: std::vec::Vec<::procenv::Error> = std::vec::Vec::new();
@@ -428,7 +437,7 @@ impl Expander {
                         }
                     }
                     std::result::Result::Err(std::env::VarError::NotUnicode(_)) => {
-                        __errors.push(::procenv::Error::InvalidUtf8 { var: #env_var });
+                        __errors.push(::procenv::Error::InvalidUtf8 { var: #env_var.to_string() });
                         (std::option::Option::None, false)
                     }
                 };
@@ -1114,6 +1123,9 @@ impl Expander {
                     #dotenv_load
                     #dotenv_loaded_flag
 
+                    // Define external prefix as None for regular from_args calls
+                    let __external_prefix: std::option::Option<&str> = std::option::Option::None;
+
                     // Error accumulator
                     let mut __errors: std::vec::Vec<::procenv::Error> = std::vec::Vec::new();
                     let mut __sources = ::procenv::ConfigSources::new();
@@ -1322,6 +1334,10 @@ impl Expander {
                     #dotenv_load
 
                     #dotenv_loaded_flag
+
+                    // Define external prefix as None for regular from_env calls
+                    // This is used by flatten fields which call __from_env_with_external_prefix
+                    let __external_prefix: std::option::Option<&str> = std::option::Option::None;
 
                     let mut __errors: std::vec::Vec<::procenv::Error> = std::vec::Vec::new();
                     let mut __sources = ::procenv::ConfigSources::new();
@@ -1583,6 +1599,173 @@ impl Expander {
                     Ok((__config, __sources))
                 }
             }
+        }
+    }
+
+    /// Generate the `__from_env_with_external_prefix` method.
+    ///
+    /// This internal method allows loading a struct with an external prefix
+    /// prepended to all env var names. Used by flatten fields to pass prefixes
+    /// to nested structs.
+    ///
+    /// # Generated Code
+    ///
+    /// ```ignore
+    /// impl Config {
+    ///     #[doc(hidden)]
+    ///     pub fn __from_env_with_external_prefix(
+    ///         __external_prefix: Option<&str>
+    ///     ) -> Result<(Self, ConfigSources), Error> {
+    ///         // Uses prefixed env var names for loading
+    ///     }
+    /// }
+    /// ```
+    fn generate_from_env_with_external_prefix_impl(
+        struct_name: &Ident,
+        generics: &Generics,
+        generators: &[Box<dyn FieldGenerator>],
+        env_config: &EnvConfigAttr,
+    ) -> QuoteStream {
+        let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+
+        // Collect all env var names for pre-dotenv check
+        let env_var_names: Vec<_> = generators.iter().filter_map(|g| g.env_var_name()).collect();
+
+        // Generate loaders using the prefixed version
+        // Note: Fields with format config need special handling (serde deserialization)
+        let loaders: Vec<QuoteStream> = generators
+            .iter()
+            .map(|g| {
+                // Use format-aware loader if field has format config
+                if let Some(format) = g.format_config() {
+                    g.generate_format_loader(format)
+                } else {
+                    g.generate_loader_with_external_prefix()
+                }
+            })
+            .collect();
+
+        // Generate simplified source tracking that doesn't depend on profile tracking vars
+        // (profile support for nested prefixed structs would require additional work)
+        let source_tracking: Vec<QuoteStream> = generators
+            .iter()
+            .map(|g| Self::generate_simple_source_tracking(g.as_ref()))
+            .collect();
+
+        // Generate assignments
+        let assignments: Vec<QuoteStream> =
+            generators.iter().map(|g| g.generate_assignment()).collect();
+
+        // Dotenv loading
+        let dotenv_load = Self::generate_dotenv_load(&env_config.dotenv);
+
+        let dotenv_loaded_flag = if env_config.dotenv.is_some() {
+            quote! { let __dotenv_loaded = true; }
+        } else {
+            quote! { let __dotenv_loaded = false; }
+        };
+
+        // Profile setup - note: profiles use fixed env var names (not prefixed)
+        let profile_setup = Self::generate_profile_setup(env_config);
+
+        quote! {
+            impl #impl_generics #struct_name #type_generics #where_clause {
+                /// Load configuration with an external prefix prepended to env var names.
+                ///
+                /// This is an internal method used by flatten fields to pass prefixes
+                /// to nested structs. The prefix is prepended to all env var names
+                /// at runtime.
+                ///
+                /// # Arguments
+                ///
+                /// * `__external_prefix` - Optional prefix to prepend to all env var names
+                #[doc(hidden)]
+                pub fn __from_env_with_external_prefix(
+                    __external_prefix: std::option::Option<&str>
+                ) -> std::result::Result<(Self, ::procenv::ConfigSources), ::procenv::Error> {
+                    // Track pre-dotenv env vars
+                    let __pre_dotenv_vars: std::collections::HashSet<&str> = [
+                        #(#env_var_names),*
+                    ]
+                    .iter()
+                    .filter(|var| std::env::var(var).is_ok())
+                    .copied()
+                    .collect();
+
+                    // Load dotenv
+                    #dotenv_load
+                    #dotenv_loaded_flag
+
+                    // Error accumulator
+                    let mut __errors: std::vec::Vec<::procenv::Error> = std::vec::Vec::new();
+                    let mut __sources = ::procenv::ConfigSources::new();
+
+                    // Read and validate profile (if configured)
+                    #profile_setup
+
+                    // Load each field with prefixed env var names
+                    #(#loaders)*
+
+                    // Track sources
+                    #(#source_tracking)*
+
+                    // Check for errors
+                    if !__errors.is_empty() {
+                        return std::result::Result::Err(if __errors.len() == 1 {
+                            __errors.pop().unwrap()
+                        } else {
+                            ::procenv::Error::Multiple { errors: __errors }
+                        });
+                    }
+
+                    std::result::Result::Ok((
+                        Self {
+                            #(#assignments),*
+                        },
+                        __sources
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Generate simplified source tracking for __from_env_with_external_prefix.
+    ///
+    /// This version doesn't depend on profile tracking variables because
+    /// the external prefix method uses simple loaders that don't track profiles.
+    fn generate_simple_source_tracking(field: &dyn FieldGenerator) -> QuoteStream {
+        let name = field.name();
+        let name_str = name.to_string();
+
+        // For flatten fields, use the nested sources
+        if field.is_flatten() {
+            let nested_sources_ident = format_ident!("__{}_nested_sources", name);
+            return quote! {
+                __sources.extend_nested(#name_str, #nested_sources_ident);
+            };
+        }
+
+        // For regular fields
+        if let Some(env_var) = field.env_var_name() {
+            let source_ident = format_ident!("__{}_source", name);
+            let has_default = field.default_value().is_some();
+
+            quote! {
+                let #source_ident = if std::env::var(#env_var).is_ok() {
+                    if __dotenv_loaded && !__pre_dotenv_vars.contains(#env_var) {
+                        ::procenv::ValueSource::new(#env_var, ::procenv::Source::DotenvFile(None))
+                    } else {
+                        ::procenv::ValueSource::new(#env_var, ::procenv::Source::Environment)
+                    }
+                } else if #has_default {
+                    ::procenv::ValueSource::new(#env_var, ::procenv::Source::Default)
+                } else {
+                    ::procenv::ValueSource::new(#env_var, ::procenv::Source::NotSet)
+                };
+                __sources.add(#name_str, #source_ident);
+            }
+        } else {
+            quote! {}
         }
     }
 }

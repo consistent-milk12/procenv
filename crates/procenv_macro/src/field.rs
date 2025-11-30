@@ -272,6 +272,21 @@ pub trait FieldGenerator {
 
     fn generate_source_tracking(&self) -> QuoteStream;
 
+    /// Generate code to load this field's value with an external prefix.
+    ///
+    /// This is like `generate_loader()` but prepends `__external_prefix` to the
+    /// env var name at runtime. Used by `__from_env_with_external_prefix()`.
+    ///
+    /// The generated code should use:
+    /// ```ignore
+    /// let __effective_var = format!("{}{}", __external_prefix.unwrap_or(""), "BASE_VAR");
+    /// match std::env::var(&__effective_var) { ... }
+    /// ```
+    fn generate_loader_with_external_prefix(&self) -> QuoteStream {
+        // Default: same as regular loader (for fields that don't use env vars)
+        self.generate_loader()
+    }
+
     fn env_var_name(&self) -> Option<&str>;
 
     /// Returns CLI configuration if this field has CLI argument support.
@@ -300,6 +315,13 @@ pub trait FieldGenerator {
     ///
     /// Used to generate calls to nested types' methods (e.g., `__config_defaults()`).
     fn field_type(&self) -> Option<&Type> {
+        None
+    }
+
+    /// Returns the prefix for flatten fields.
+    ///
+    /// Used to prepend a prefix to nested env var names.
+    fn flatten_prefix(&self) -> Option<&str> {
         None
     }
 
@@ -437,10 +459,59 @@ impl FieldGenerator for RequiredField {
 
                         // Contains invalid UTF-8 bytes
                         std::env::VarError::NotUnicode(_) => {
-                            __errors.push(::procenv::Error::InvalidUtf8 { var: #env_var });
+                            __errors.push(::procenv::Error::InvalidUtf8 { var: #env_var.to_string() });
                         }
                     }
 
+                    std::option::Option::None
+                }
+            };
+        }
+    }
+
+    fn generate_loader_with_external_prefix(&self) -> QuoteStream {
+        let name = &self.name;
+        let ty = &self.ty;
+        let base_var = &self.env_var;
+        let secret = self.secret;
+        let type_name = quote!(#ty).to_string();
+        let effective_var_ident = format_ident!("__{}_effective_var", name);
+
+        quote! {
+            // Build effective env var name with external prefix
+            let #effective_var_ident: std::string::String = format!(
+                "{}{}",
+                __external_prefix.unwrap_or(""),
+                #base_var
+            );
+
+            let #name: std::option::Option<#ty> = match std::env::var(&#effective_var_ident) {
+                std::result::Result::Ok(val) => {
+                    match val.parse::<#ty>() {
+                        std::result::Result::Ok(v) => std::option::Option::Some(v),
+                        std::result::Result::Err(e) => {
+                            __errors.push(::procenv::Error::parse(
+                                &#effective_var_ident,
+                                val,
+                                #secret,
+                                #type_name,
+                                std::boxed::Box::new(e),
+                            ));
+                            std::option::Option::None
+                        }
+                    }
+                }
+                std::result::Result::Err(e) => {
+                    match e {
+                        std::env::VarError::NotPresent => {
+                            __errors.push(::procenv::Error::missing(&#effective_var_ident));
+                        }
+                        std::env::VarError::NotUnicode(_) => {
+                            __errors.push(::procenv::Error::InvalidUtf8 {
+                                var: #effective_var_ident.clone(),
+                            });
+                        }
+                    }
                     std::option::Option::None
                 }
             };
@@ -596,7 +667,7 @@ impl FieldGenerator for RequiredField {
 
                         std::env::VarError::NotUnicode(_) => {
                             __errors.push(::procenv::Error::InvalidUtf8 {
-                                var: #env_var,
+                                var: #env_var.to_string(),
                             });
                         }
                     }
@@ -699,7 +770,7 @@ impl FieldGenerator for DefaultField {
 
                     std::result::Result::Err(std::env::VarError::NotUnicode(_)) => {
                         __errors.push(::procenv::Error::InvalidUtf8 {
-                            var: #env_var,
+                            var: #env_var.to_string(),
                         });
 
                         return std::option::Option::None;
@@ -712,6 +783,67 @@ impl FieldGenerator for DefaultField {
                     std::result::Result::Err(e) => {
                         __errors.push(::procenv::Error::parse(
                             #env_var,
+                            if #secret {
+                                "[REDACTED]".to_string()
+                            } else {
+                                val
+                            },
+                            #secret,
+                            std::any::type_name::<#ty>(),
+                            std::boxed::Box::new(e),
+                        ));
+
+                        std::option::Option::None
+                    }
+                }
+            })();
+        }
+    }
+
+    fn generate_loader_with_external_prefix(&self) -> QuoteStream {
+        let field_name = &self.name;
+        let ty = &self.ty;
+        let base_var = &self.env_var;
+        let default = &self.default;
+        let secret = self.secret;
+
+        let used_default_ident = format_ident!("__{}_used_default", field_name);
+        let effective_var_ident = format_ident!("__{}_effective_var", field_name);
+
+        quote! {
+            let mut #used_default_ident = false;
+
+            // Build effective env var name with external prefix
+            let #effective_var_ident: std::string::String = format!(
+                "{}{}",
+                __external_prefix.unwrap_or(""),
+                #base_var
+            );
+
+            let #field_name: std::option::Option<#ty> = (|| {
+                let val = match std::env::var(&#effective_var_ident) {
+                    std::result::Result::Ok(v) => v,
+
+                    std::result::Result::Err(std::env::VarError::NotPresent) => {
+                        #used_default_ident = true;
+                        #default.to_string()
+                    },
+
+                    std::result::Result::Err(std::env::VarError::NotUnicode(_)) => {
+                        __errors.push(::procenv::Error::InvalidUtf8 {
+                            var: #effective_var_ident.clone(),
+                        });
+
+                        return std::option::Option::None;
+                    }
+                };
+
+                match val.parse::<#ty>() {
+                    std::result::Result::Ok(v) => std::option::Option::Some(v),
+
+                    std::result::Result::Err(e) => {
+                        __errors.push(::procenv::Error::parse(
+                            &#effective_var_ident,
                             if #secret {
                                 "[REDACTED]".to_string()
                             } else {
@@ -839,7 +971,7 @@ impl FieldGenerator for DefaultField {
 
                     std::result::Result::Err(std::env::VarError::NotUnicode(_)) => {
                         __errors.push(::procenv::Error::InvalidUtf8 {
-                            var: #env_var,
+                            var: #env_var.to_string(),
                         });
 
                         return std::option::Option::None;
@@ -971,10 +1103,59 @@ impl FieldGenerator for OptionalField {
                     // Only report error for invalid UTF-8
                     // Missing env var is expected for optional fields
                     if let std::env::VarError::NotUnicode(_) = e {
-                        __errors.push(::procenv::Error::InvalidUtf8 { var: #env_var });
+                        __errors.push(::procenv::Error::InvalidUtf8 { var: #env_var.to_string() });
                     }
 
                     // Return None for both NotPresent and NotUnicode
+                    std::option::Option::None
+                }
+            };
+        }
+    }
+
+    fn generate_loader_with_external_prefix(&self) -> QuoteStream {
+        let name = &self.name;
+        let inner = &self.inner_type;
+        let base_var = &self.env_var;
+        let secret = self.secret;
+        let type_name = quote!(#inner).to_string();
+        let effective_var_ident = format_ident!("__{}_effective_var", name);
+
+        quote! {
+            // Build effective env var name with external prefix
+            let #effective_var_ident: std::string::String = format!(
+                "{}{}",
+                __external_prefix.unwrap_or(""),
+                #base_var
+            );
+
+            let #name: std::option::Option<#inner> = match std::env::var(&#effective_var_ident) {
+                std::result::Result::Ok(val) => {
+                    match val.parse::<#inner>() {
+                        std::result::Result::Ok(v) => std::option::Option::Some(v),
+
+                        std::result::Result::Err(e) => {
+                            __errors.push(::procenv::Error::parse(
+                                &#effective_var_ident,
+                                val,
+                                #secret,
+                                #type_name,
+                                std::boxed::Box::new(e),
+                            ));
+
+                            std::option::Option::None
+                        }
+                    }
+                }
+
+                std::result::Result::Err(e) => {
+                    // Only report error for invalid UTF-8
+                    if let std::env::VarError::NotUnicode(_) = e {
+                        __errors.push(::procenv::Error::InvalidUtf8 {
+                            var: #effective_var_ident.clone(),
+                        });
+                    }
+
                     std::option::Option::None
                 }
             };
@@ -1105,7 +1286,7 @@ impl FieldGenerator for OptionalField {
                     // Missing env var is expected for optional fields
                     if let std::env::VarError::NotUnicode(_) = e {
                         __errors.push(::procenv::Error::InvalidUtf8 {
-                            var: #env_var,
+                            var: #env_var.to_string(),
                         });
                     }
 
@@ -1179,7 +1360,44 @@ impl FieldGenerator for SecretStringField {
 
                         std::env::VarError::NotUnicode(_) => {
                             __errors.push(::procenv::Error::InvalidUtf8 {
-                                var: #env_var
+                                var: #env_var.to_string()
+                            });
+                        }
+                    }
+
+                    std::option::Option::None
+                }
+            };
+        }
+    }
+
+    fn generate_loader_with_external_prefix(&self) -> QuoteStream {
+        let name = &self.name;
+        let base_var = &self.env_var;
+        let effective_var_ident = format_ident!("__{}_effective_var", name);
+
+        quote! {
+            // Build effective env var name with external prefix
+            let #effective_var_ident: std::string::String = format!(
+                "{}{}",
+                __external_prefix.unwrap_or(""),
+                #base_var
+            );
+
+            let #name: std::option::Option<::procenv::SecretString> = match std::env::var(&#effective_var_ident) {
+                std::result::Result::Ok(val) => {
+                    std::option::Option::Some(::procenv::SecretString::from(val))
+                }
+
+                std::result::Result::Err(e) => {
+                    match e {
+                        std::env::VarError::NotPresent => {
+                            __errors.push(::procenv::Error::missing(&#effective_var_ident));
+                        }
+
+                        std::env::VarError::NotUnicode(_) => {
+                            __errors.push(::procenv::Error::InvalidUtf8 {
+                                var: #effective_var_ident.clone()
                             });
                         }
                     }
@@ -1292,15 +1510,23 @@ pub struct SecretBoxField {
 /// and any errors are merged into the parent's error list.
 ///
 /// ## Behavior
-/// - Calls `NestedType::from_env()` on the nested struct
+/// - Calls `NestedType::from_env()` on the nested struct (or with external prefix)
 /// - If successful -> `Some(value)`
 /// - If errors occur -> merges them into parent's `__errors` and returns `None`
+///
+/// ## Prefix Support
+/// When `prefix` is set (e.g., `#[env(flatten, prefix = "DB_")]`), the nested
+/// type's env vars are prefixed with this value. The prefix is combined with
+/// any parent struct's prefix.
 pub struct FlattenField {
     /// The struct field name
     pub name: Ident,
 
     /// The field's type (the nested config struct)
     pub ty: Type,
+
+    /// Optional prefix to prepend to nested env var names
+    pub prefix: Option<String>,
 }
 
 impl FieldGenerator for FlattenField {
@@ -1310,11 +1536,30 @@ impl FieldGenerator for FlattenField {
 
         let nested_sources_ident = format_ident!("__{}_nested_sources", field_name);
 
+        // Determine how to call the nested type based on whether we have a prefix
+        let load_call = if let Some(prefix) = &self.prefix {
+            // When a prefix is explicitly specified, use __from_env_with_external_prefix
+            // and combine with any external prefix from parent
+            quote! {
+                <#ty>::__from_env_with_external_prefix(
+                    std::option::Option::Some(
+                        &format!("{}{}", __external_prefix.unwrap_or(""), #prefix)
+                    )
+                )
+            }
+        } else {
+            // No prefix specified - use regular from_env_with_sources for backwards compatibility
+            // This maintains the original behavior where flatten fields don't inherit parent prefix
+            quote! {
+                <#ty>::from_env_with_sources()
+            }
+        };
+
         quote! {
             let (#field_name, #nested_sources_ident): (
                 std::option::Option<#ty>,
                 ::procenv::ConfigSources
-            ) = match <#ty>::from_env_with_sources() {
+            ) = match #load_call {
                 std::result::Result::Ok((v, sources))=> {
                     (std::option::Option::Some(v), sources)
                 }
@@ -1377,6 +1622,10 @@ impl FieldGenerator for FlattenField {
 
     fn field_type(&self) -> Option<&Type> {
         Some(&self.ty)
+    }
+
+    fn flatten_prefix(&self) -> Option<&str> {
+        self.prefix.as_deref()
     }
 
     fn generate_source_tracking(&self) -> QuoteStream {
@@ -1460,7 +1709,62 @@ impl FieldGenerator for SecretBoxField {
 
                         std::env::VarError::NotUnicode(_) => {
                             __errors.push(::procenv::Error::InvalidUtf8 {
-                                var: #env_var
+                                var: #env_var.to_string()
+                            });
+                        }
+                    }
+
+                    std::option::Option::None
+                }
+            };
+        }
+    }
+
+    fn generate_loader_with_external_prefix(&self) -> QuoteStream {
+        let name = &self.name;
+        let inner = &self.inner_type;
+        let base_var = &self.env_var;
+        let type_name = quote!(#inner).to_string();
+        let effective_var_ident = format_ident!("__{}_effective_var", name);
+
+        quote! {
+            // Build effective env var name with external prefix
+            let #effective_var_ident: std::string::String = format!(
+                "{}{}",
+                __external_prefix.unwrap_or(""),
+                #base_var
+            );
+
+            let #name: std::option::Option<::procenv::SecretBox<#inner>> = match std::env::var(&#effective_var_ident) {
+                std::result::Result::Ok(val) => {
+                    match val.parse::<#inner>() {
+                        std::result::Result::Ok(v) => {
+                            std::option::Option::Some(::procenv::SecretBox::init_with(|| v))
+                        }
+
+                        std::result::Result::Err(e) => {
+                            __errors.push(::procenv::Error::parse(
+                                &#effective_var_ident,
+                                val,
+                                true,
+                                #type_name,
+                                std::boxed::Box::new(e),
+                            ));
+
+                            std::option::Option::None
+                        }
+                    }
+                }
+
+                std::result::Result::Err(e) => {
+                    match e {
+                        std::env::VarError::NotPresent => {
+                            __errors.push(::procenv::Error::missing(&#effective_var_ident));
+                        }
+
+                        std::env::VarError::NotUnicode(_) => {
+                            __errors.push(::procenv::Error::InvalidUtf8 {
+                                var: #effective_var_ident.clone()
                             });
                         }
                     }
@@ -1576,8 +1880,31 @@ impl FieldFactory {
         let field_config = Parser::parse_field_config(field)?;
 
         // Handle flatten fields separately - they don't use env vars directly
-        if let FieldConfig::Flatten = field_config {
-            return Ok(Box::new(FlattenField { name, ty }));
+        if let FieldConfig::Flatten { prefix: flatten_prefix } = field_config {
+            // Flatten fields only get a prefix if explicitly specified via `prefix = "..."`
+            // By default, flatten fields DON'T inherit the parent struct's prefix
+            // (this maintains backwards compatibility)
+            //
+            // When a prefix IS specified on the flatten field:
+            // - If struct has prefix = "APP_" and flatten has prefix = "DB_",
+            //   the effective prefix for nested fields is "APP_DB_"
+            // - If no struct prefix, just the flatten prefix is used
+            let effective_prefix = match flatten_prefix {
+                Some(field_prefix) => {
+                    // Combine struct prefix (if any) with the flatten prefix
+                    match prefix {
+                        Some(struct_prefix) => Some(format!("{}{}", struct_prefix, field_prefix)),
+                        None => Some(field_prefix),
+                    }
+                }
+                None => None, // No prefix propagation by default
+            };
+
+            return Ok(Box::new(FlattenField {
+                name,
+                ty,
+                prefix: effective_prefix,
+            }));
         }
 
         // Extract EnvAttr for regular fields

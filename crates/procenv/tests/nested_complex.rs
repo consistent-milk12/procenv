@@ -389,9 +389,7 @@ struct Endpoint {
     timeout: u32,
 }
 
-// Note: Can't easily test two flattened fields of same type with different prefixes
-// because flatten without prefix uses the same env vars. This tests that flattening
-// the same type once works correctly.
+// Test without prefix propagation - flatten uses the nested type's own env vars
 #[derive(EnvConfig)]
 #[env_config(prefix = "API_")]
 struct ApiConfig {
@@ -419,6 +417,134 @@ fn test_same_type_nested() {
             assert_eq!(config.name, "my_api");
             assert_eq!(config.endpoint.url, "https://api.example.com");
             assert_eq!(config.endpoint.timeout, 60);
+        },
+    )
+}
+
+// ============================================================================
+// Flatten with Prefix Propagation (New Feature)
+// ============================================================================
+// With prefix support on flatten fields, we can now have multiple flattened
+// fields of the same type with different prefixes!
+
+#[derive(EnvConfig)]
+#[env_config(prefix = "APP_")]
+struct MultiEndpointConfig {
+    #[env(var = "NAME", default = "service")]
+    name: String,
+
+    // Primary endpoint uses PRIMARY_ prefix (combined with APP_ = APP_PRIMARY_)
+    #[env(flatten, prefix = "PRIMARY_")]
+    primary: Endpoint,
+
+    // Backup endpoint uses BACKUP_ prefix (combined with APP_ = APP_BACKUP_)
+    #[env(flatten, prefix = "BACKUP_")]
+    backup: Endpoint,
+}
+
+#[test]
+#[serial]
+fn test_flatten_with_prefix_propagation() {
+    cleanup_env(&[
+        "APP_NAME",
+        "APP_PRIMARY_URL",
+        "APP_PRIMARY_TIMEOUT",
+        "APP_BACKUP_URL",
+        "APP_BACKUP_TIMEOUT",
+    ]);
+
+    with_env(
+        &[
+            ("APP_NAME", "my_service"),
+            ("APP_PRIMARY_URL", "https://primary.example.com"),
+            ("APP_PRIMARY_TIMEOUT", "30"),
+            ("APP_BACKUP_URL", "https://backup.example.com"),
+            ("APP_BACKUP_TIMEOUT", "60"),
+        ],
+        || {
+            let config = MultiEndpointConfig::from_env().expect("should load");
+
+            assert_eq!(config.name, "my_service");
+            assert_eq!(config.primary.url, "https://primary.example.com");
+            assert_eq!(config.primary.timeout, 30);
+            assert_eq!(config.backup.url, "https://backup.example.com");
+            assert_eq!(config.backup.timeout, 60);
+        },
+    )
+}
+
+#[test]
+#[serial]
+fn test_flatten_prefix_uses_defaults() {
+    cleanup_env(&[
+        "APP_NAME",
+        "APP_PRIMARY_URL",
+        "APP_PRIMARY_TIMEOUT",
+        "APP_BACKUP_URL",
+        "APP_BACKUP_TIMEOUT",
+    ]);
+
+    // Only set some values - others should use defaults
+    with_env(
+        &[
+            ("APP_NAME", "my_service"),
+            ("APP_PRIMARY_URL", "https://primary.example.com"),
+            // APP_PRIMARY_TIMEOUT not set - should use default "30"
+            // APP_BACKUP_URL not set - should use default "http://localhost"
+            ("APP_BACKUP_TIMEOUT", "120"),
+        ],
+        || {
+            let config = MultiEndpointConfig::from_env().expect("should load with defaults");
+
+            assert_eq!(config.name, "my_service");
+            assert_eq!(config.primary.url, "https://primary.example.com");
+            assert_eq!(config.primary.timeout, 30); // default
+            assert_eq!(config.backup.url, "http://localhost"); // default
+            assert_eq!(config.backup.timeout, 120);
+        },
+    )
+}
+
+// Test flatten prefix without struct-level prefix
+#[derive(EnvConfig)]
+struct NoPrefixMultiEndpoint {
+    #[env(var = "SVC_NAME", default = "service")]
+    name: String,
+
+    #[env(flatten, prefix = "MAIN_")]
+    main: Endpoint,
+
+    #[env(flatten, prefix = "FALLBACK_")]
+    fallback: Endpoint,
+}
+
+#[test]
+#[serial]
+fn test_flatten_prefix_without_struct_prefix() {
+    cleanup_env(&[
+        "SVC_NAME",
+        "MAIN_URL",
+        "MAIN_TIMEOUT",
+        "FALLBACK_URL",
+        "FALLBACK_TIMEOUT",
+    ]);
+
+    with_env(
+        &[
+            ("SVC_NAME", "test_service"),
+            ("MAIN_URL", "https://main.example.com"),
+            ("MAIN_TIMEOUT", "15"),
+            ("FALLBACK_URL", "https://fallback.example.com"),
+            ("FALLBACK_TIMEOUT", "45"),
+        ],
+        || {
+            let config = NoPrefixMultiEndpoint::from_env().expect("should load");
+
+            assert_eq!(config.name, "test_service");
+            assert_eq!(config.main.url, "https://main.example.com");
+            assert_eq!(config.main.timeout, 15);
+            assert_eq!(config.fallback.url, "https://fallback.example.com");
+            assert_eq!(config.fallback.timeout, 45);
         },
     )
 }

@@ -197,7 +197,8 @@ pub enum Error {
     )]
     Missing {
         /// The name of the missing environment variable.
-        var: &'static str,
+        /// Uses String to support runtime-constructed var names (e.g., with prefixes).
+        var: String,
 
         /// Dynamic help message (allows customization per-field).
         #[help]
@@ -211,14 +212,16 @@ pub enum Error {
     )]
     InvalidUtf8 {
         /// The name of the environment variable with invalid UTF-8.
-        var: &'static str,
+        /// Uses String to support runtime-constructed var names (e.g., with prefixes).
+        var: String,
     },
 
     /// An environment variable value could not be parsed into the expected type.
     #[diagnostic(code(procenv::parse_error))]
     Parse {
         /// The name of the environment variable.
-        var: &'static str,
+        /// Uses String to support runtime-constructed var names (e.g., with prefixes).
+        var: String,
 
         /// The raw string value that failed to parse.
         value: String,
@@ -227,7 +230,7 @@ pub enum Error {
         secret: bool,
 
         /// The expected type name (for diagnostic messages).
-        expected_type: &'static str,
+        expected_type: String,
 
         /// Dynamic help text generated based on expected_type.
         #[help]
@@ -608,27 +611,36 @@ pub fn validation_errors_to_procenv(
 
 impl Error {
     /// Creates a Missing error with a standard help message.
-    pub fn missing(var: &'static str) -> Self {
-        Error::Missing {
-            var,
-            help: format!("set {} in your environment or .env file", var),
-        }
+    ///
+    /// Accepts any type that can be converted to String, including
+    /// `&str`, `String`, or runtime-constructed var names.
+    pub fn missing(var: impl Into<String>) -> Self {
+        let var = var.into();
+        let help = format!("set {} in your environment or .env file", var);
+        Error::Missing { var, help }
     }
 
     /// Creates a Parse error with appropriate help text.
+    ///
+    /// Accepts any type that can be converted to String for var and expected_type,
+    /// allowing runtime-constructed var names and type names.
     pub fn parse(
-        var: &'static str,
-        value: String,
+        var: impl Into<String>,
+        value: impl Into<String>,
         secret: bool,
-        expected_type: &'static str,
+        expected_type: impl Into<String>,
         source: Box<dyn StdError + Send + Sync>,
     ) -> Self {
+        let var = var.into();
+        let value = value.into();
+        let expected_type = expected_type.into();
+        let help = format!("expected a valid {}", expected_type);
         Error::Parse {
             var,
             value,
             secret,
             expected_type,
-            help: format!("expected a valid {}", expected_type),
+            help,
             source,
         }
     }
