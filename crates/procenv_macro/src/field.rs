@@ -321,6 +321,7 @@ pub trait FieldGenerator {
     /// Returns the prefix for flatten fields.
     ///
     /// Used to prepend a prefix to nested env var names.
+    #[allow(dead_code)]
     fn flatten_prefix(&self) -> Option<&str> {
         None
     }

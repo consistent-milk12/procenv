@@ -135,6 +135,7 @@ fn test_parse_error_shows_expected_type() {
 // ============================================================================
 
 #[derive(EnvConfig)]
+#[allow(dead_code)]
 struct SecretErrorConfig {
     #[env(var = "ERR_SECRET", secret)]
     api_key: String,
@@ -160,6 +161,7 @@ fn test_debug_redacts_secret_value() {
 }
 
 #[derive(EnvConfig)]
+#[allow(dead_code)]
 struct SecretParseErrorConfig {
     #[env(var = "ERR_SECRET_NUM", secret)]
     secret_num: u32,
