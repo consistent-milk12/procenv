@@ -52,10 +52,8 @@ procenv_macro = { version = "0.1.4", path = "../procenv_macro" }
 miette = { workspace = true }
 thiserror = { workspace = true }
 
-# Optional high-value dependencies
 secrecy = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
-validator = { workspace = true, optional = true }
 
 # Optional medium-complexity dependencies
 dotenvy = { workspace = true, optional = true }
@@ -68,10 +66,12 @@ tracing = { workspace = true, optional = true }
 toml = { workspace = true, optional = true }
 serde-saphyr = { workspace = true, optional = true }
 
+# Validation
+validator = { workspace = true, optional = true }
+
 [dev-dependencies]
 trybuild = "1.0.114"
 serial_test = "3.2.0"
-validator = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }

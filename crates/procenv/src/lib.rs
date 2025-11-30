@@ -272,6 +272,23 @@ pub enum Error {
         #[help]
         help: String,
     },
+
+    /// A validation error occurred after loading configuration.
+    ///
+    /// This variant wraps errors from the `validator` crate and provides
+    /// structured information about which fields failed validation.
+    #[cfg(feature = "validator")]
+    #[diagnostic(
+        code(procenv::validation_error),
+        help("fix the validation errors listed above")
+    )]
+    Validation {
+        /// The validation errors from the validator crate.
+        ///
+        /// Each entry maps a field name to a list of validation error messages.
+        #[related]
+        errors: Vec<ValidationFieldError>,
+    },
 }
 
 #[cfg(feature = "file")]
@@ -327,6 +344,11 @@ impl Display for Error {
 
             Error::InvalidProfile { profile, var, .. } => {
                 write!(f, "invalid profile '{}' for {}", profile, var)
+            }
+
+            #[cfg(feature = "validator")]
+            Error::Validation { errors } => {
+                write!(f, "{} validation error(s) occurred", errors.len())
             }
         }
     }
@@ -388,6 +410,12 @@ impl Debug for Error {
                 .field("valid_profiles", valid_profiles)
                 .field("help", help)
                 .finish(),
+
+            #[cfg(feature = "validator")]
+            Error::Validation { errors } => f
+                .debug_struct("Validation")
+                .field("errors", errors)
+                .finish(),
         }
     }
 }
@@ -401,6 +429,131 @@ impl StdError for Error {
             _ => None,
         }
     }
+}
+
+#[cfg(feature = "validator")]
+#[derive(Debug, Diagnostic)]
+#[diagnostic(code(procenv::field_validation_error))]
+pub struct ValidationFieldError {
+    /// The field name that failed validation.
+    pub field: String,
+
+    /// The validation rule that failed (e.g., "email", "range", "url").
+    pub code: String,
+
+    /// Human-readable error message.
+    #[help]
+    pub message: String,
+
+    /// Additional parameters from the validation rule (e.g., min/max values).
+    pub params: Option<String>,
+}
+
+#[cfg(feature = "validator")]
+impl ValidationFieldError {
+    /// Create a new validation field error.
+    pub fn new(
+        field: impl Into<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            field: field.into(),
+            code: code.into(),
+            message: message.into(),
+            params: None,
+        }
+    }
+
+    /// Add parameters to the error (e.g., "min: 1, max: 100").
+    pub fn with_params(mut self, params: impl Into<String>) -> Self {
+        self.params = Some(params.into());
+
+        self
+    }
+
+    /// Convert validator crate errors to our error type.
+    pub fn validation_errors_to_procenv(
+        errors: ::validator::ValidationErrors,
+    ) -> Vec<ValidationFieldError> {
+        let mut result = Vec::new();
+
+        for (field, field_errors) in errors.field_errors() {
+            for error in field_errors {
+                let message = error
+                    .message
+                    .as_ref()
+                    .map(|m| m.to_string())
+                    .unwrap_or_else(|| format!("validation failed: {}", error.code));
+
+                let params = if error.params.is_empty() {
+                    None
+                } else {
+                    let param_strs: Vec<String> = error
+                        .params
+                        .iter()
+                        .filter(|(k, _)| *k != "value")
+                        .map(|(k, v)| format!("{k}: {v}"))
+                        .collect();
+
+                    if param_strs.is_empty() {
+                        None
+                    } else {
+                        Some(param_strs.join(", "))
+                    }
+                };
+
+                let mut err =
+                    ValidationFieldError::new(field.to_string(), error.code.to_string(), message);
+
+                if let Some(param) = params {
+                    err = err.with_params(param);
+                }
+
+                result.push(err);
+            }
+        }
+
+        // Also handle nested struct errors
+        for (field, nested_errors) in errors.errors() {
+            if let ::validator::ValidationErrorsKind::Struct(nested) = nested_errors {
+                let nested_field_errors = Self::validation_errors_to_procenv(*nested.clone());
+
+                for mut err in nested_field_errors {
+                    err.field = format!("{}.{}", field, err.field);
+
+                    result.push(err);
+                }
+            }
+        }
+
+        result
+    }
+}
+
+#[cfg(feature = "validator")]
+impl Display for ValidationFieldError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "field `{}` failed validation: {}",
+            self.field, self.message
+        )
+    }
+}
+
+#[cfg(feature = "validator")]
+impl StdError for ValidationFieldError {}
+
+/// Standalone function to convert validator crate errors to procenv errors.
+///
+/// This is a convenience wrapper around [`ValidationFieldError::validation_errors_to_procenv`].
+/// It's exported at the crate root for use in generated code.
+#[cfg(feature = "validator")]
+pub fn validation_errors_to_procenv(
+    errors: ::validator::ValidationErrors,
+) -> Vec<ValidationFieldError> {
+    ValidationFieldError::validation_errors_to_procenv(errors)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

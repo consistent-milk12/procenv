@@ -83,14 +83,15 @@ procenv = { path = "path/to/procenv", features = ["file", "toml", "yaml"] }
 
 ### Feature Flags
 
-| Feature   | Description                               |
-| --------- | ----------------------------------------- |
-| `dotenv`  | Load `.env` files automatically           |
-| `secrecy` | `SecretString` support for sensitive data |
-| `file`    | JSON file configuration                   |
-| `toml`    | TOML file support                         |
-| `yaml`    | YAML file support                         |
-| `clap`    | CLI argument integration                  |
+| Feature     | Description                                   |
+| ----------- | --------------------------------------------- |
+| `dotenv`    | Load `.env` files automatically               |
+| `secrecy`   | `SecretString` support for sensitive data     |
+| `file`      | JSON file configuration                       |
+| `toml`      | TOML file support                             |
+| `yaml`      | YAML file support                             |
+| `clap`      | CLI argument integration                      |
+| `validator` | Validation integration with `validator` crate |
 
 ## Attribute Reference
 
@@ -138,7 +139,8 @@ struct Config {
     dotenv,                                  // Load .env file
     file_optional = "config.toml",           // Optional config file
     profile_env = "APP_ENV",                 // Profile selection var
-    profiles = ["dev", "staging", "prod"]    // Valid profiles
+    profiles = ["dev", "staging", "prod"],   // Valid profiles
+    validate                                 // Enable validation methods
 )]
 struct Config {
     #[env(var = "DATABASE_URL")]
@@ -282,16 +284,60 @@ struct Config {
 }
 ```
 
+## Validation
+
+Combine environment loading with runtime validation using the `validator` crate:
+
+```rust
+use procenv::EnvConfig;
+use validator::Validate;
+
+#[derive(EnvConfig, Validate)]
+#[env_config(validate)]  // Enable from_env_validated() method
+struct Config {
+    #[env(var = "PORT", default = "8080")]
+    #[validate(range(min = 1, max = 65535))]
+    port: u16,
+
+    #[env(var = "ADMIN_EMAIL")]
+    #[validate(email)]
+    admin_email: String,
+
+    #[env(var = "API_KEY")]
+    #[validate(length(min = 32))]
+    api_key: String,
+}
+
+// One-step load AND validate
+let config = Config::from_env_validated()?;
+```
+
+Validation errors are accumulated and shown together:
+
+```
+procenv::validation_error
+
+  × 2 validation error(s) occurred
+
+Error: field `port` failed validation: range
+  help: value must be between 1 and 65535
+
+Error: field `admin_email` failed validation: email
+  help: must be a valid email address
+```
+
 ## Generated Methods
 
-| Method                       | Description                                        |
-| ---------------------------- | -------------------------------------------------- |
-| `from_env()`                 | Load from environment variables                    |
-| `from_env_with_sources()`    | Load with source attribution                       |
-| `from_config()`              | Load from files + env (requires `file` feature)    |
-| `from_config_with_sources()` | File loading with source attribution               |
-| `from_args()`                | Load from CLI args + env (requires `clap` feature) |
-| `env_example()`              | Generate `.env.example` content                    |
+| Method                              | Description                                                                |
+| ----------------------------------- | -------------------------------------------------------------------------- |
+| `from_env()`                        | Load from environment variables                                            |
+| `from_env_with_sources()`           | Load with source attribution                                               |
+| `from_config()`                     | Load from files + env (requires `file` feature)                            |
+| `from_config_with_sources()`        | File loading with source attribution                                       |
+| `from_args()`                       | Load from CLI args + env (requires `clap` feature)                         |
+| `from_env_validated()`              | Load + validate (requires `validator` feature + `#[env_config(validate)]`) |
+| `from_env_validated_with_sources()` | Load + validate with source attribution                                    |
+| `env_example()`                     | Generate `.env.example` content                                            |
 
 ## Comparison with Established Crates
 
@@ -302,6 +348,7 @@ struct Config {
 | miette diagnostics      | **Yes**      | No         | No         | No     |
 | .env.example generation | **Yes**      | No         | No         | No     |
 | CLI integration         | **Yes**      | No         | No         | No     |
+| Validation integration  | **Yes**      | No         | No         | No     |
 | Compile-time derive     | Yes          | No         | No         | Yes    |
 | File configs            | Yes          | Yes        | Yes        | No     |
 | Custom providers        | No           | Yes        | Yes        | No     |
@@ -313,7 +360,6 @@ struct Config {
 - **No extensibility** - Can't add custom providers (Vault, SSM, Consul)
 - **All-or-nothing loading** - No runtime access to individual config values
 - **No hot reload** - Can't watch for config file changes
-- **Validation incomplete** - `validator` crate integration not finished
 - **Zero production usage** - Untested in real-world applications
 - **Requires nightly** - Uses unstable Rust features
 
@@ -348,10 +394,10 @@ procenv/
 - Profile support (dev/staging/prod)
 - Source attribution for all loading methods
 - Secret masking in errors and Debug
+- Validation integration with `validator` crate
 
 **Planned (see [PROGRESS.md](PROGRESS.md)):**
 
-- Phase B: Validation integration
 - Phase C: Provider extensibility
 - Phase D: Runtime value access
 - Phase E: Hot reload

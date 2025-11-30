@@ -303,6 +303,11 @@ pub trait FieldGenerator {
         None
     }
 
+    /// Returns custom validation function name if specified.
+    fn validate_fn(&self) -> Option<&str> {
+        None
+    }
+
     /// Generate clap Arg definition for this field (if CLI-enabled).
     fn generate_clap_arg(&self) -> Option<QuoteStream> {
         let cli = self.cli_config()?;
@@ -379,6 +384,9 @@ pub struct RequiredField {
     /// Deserialization format for structured data (Phase 17)
     /// When set, uses serde deserialization instead of FromStr
     pub format: Option<String>,
+
+    /// Custom Validation function name
+    pub validate: Option<String>,
 }
 
 impl FieldGenerator for RequiredField {
@@ -614,6 +622,10 @@ impl FieldGenerator for RequiredField {
     fn format_config(&self) -> Option<&str> {
         self.format.as_deref()
     }
+
+    fn validate_fn(&self) -> Option<&str> {
+        self.validate.as_deref()
+    }
 }
 
 // ============================================================================
@@ -659,6 +671,8 @@ pub struct DefaultField {
 
     /// Deserialization format for structured data (Phase 17)
     pub format: Option<String>,
+
+    pub validate: Option<String>,
 }
 
 impl FieldGenerator for DefaultField {
@@ -874,6 +888,10 @@ impl FieldGenerator for DefaultField {
     fn format_config(&self) -> Option<&str> {
         self.format.as_deref()
     }
+
+    fn validate_fn(&self) -> Option<&str> {
+        self.validate.as_deref()
+    }
 }
 
 // ============================================================================
@@ -915,6 +933,8 @@ pub struct OptionalField {
 
     /// Deserialization format for structured data (Phase 17)
     pub format: Option<String>,
+
+    pub validate: Option<String>,
 }
 
 impl FieldGenerator for OptionalField {
@@ -1109,6 +1129,10 @@ impl FieldGenerator for OptionalField {
 
     fn format_config(&self) -> Option<&str> {
         self.format.as_deref()
+    }
+
+    fn validate_fn(&self) -> Option<&str> {
+        self.validate.as_deref()
     }
 }
 
@@ -1587,6 +1611,7 @@ impl FieldFactory {
         let cli = env_attr.cli;
         let profile = env_attr.profile;
         let format = env_attr.format;
+        let validate = env_attr.validate;
 
         // Choose the appropriate field generator based on attributes
         if env_attr.optional {
@@ -1606,6 +1631,7 @@ impl FieldFactory {
                 cli,
                 profile,
                 format,
+                validate,
             }))
         } else if let Some(default) = env_attr.default {
             // Default field
@@ -1619,6 +1645,7 @@ impl FieldFactory {
                 cli,
                 profile,
                 format,
+                validate,
             }))
         } else {
             // Required field (the default)
@@ -1631,6 +1658,7 @@ impl FieldFactory {
                 cli,
                 profile,
                 format,
+                validate,
             }))
         }
     }

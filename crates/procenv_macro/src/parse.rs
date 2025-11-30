@@ -197,6 +197,10 @@ pub struct EnvAttr {
     /// Example: `#[env(var = "HOSTS", format = "json")]`
     /// Supported: "json", "toml", "yaml"
     pub format: Option<String>,
+
+    /// Custom validation function name.
+    /// Example: `#[env(var = "...", validate = "my_validator")]`
+    pub validate: Option<String>,
 }
 
 /// Builder pattern parser for `#[env(...)]` attributes.
@@ -249,6 +253,9 @@ pub struct Parser {
 
     /// CLI short flag (from `short = 'x'`)
     arg_short: Option<char>,
+
+    /// Custom validation function (from `validate = "..."`)
+    validate: Option<String>,
 }
 
 impl Parser {
@@ -278,6 +285,7 @@ impl Parser {
             "arg" => "arg",
             "short" => "short",
             "format" => "format",
+            "validate" => "validate",
             _ => return Err(meta.error(format!("Unknown option `{name}`"))),
         };
 
@@ -349,6 +357,12 @@ impl Parser {
                 self.format = Some(format_val);
             }
 
+            // validate = "function_name" - custom validation function
+            "validate" => {
+                let lit_str: LitStr = meta.value()?.parse()?;
+                self.validate = Some(lit_str.value());
+            }
+
             // We validated the key above
             _ => unreachable!(),
         }
@@ -406,6 +420,7 @@ impl Parser {
             cli,
             profile: None, // Parsed separately via #[profile(...)] attribute
             format: self.format,
+            validate: self.validate,
         })
     }
 
@@ -641,6 +656,10 @@ pub struct EnvConfigAttr {
     /// If set, loading fails when the profile env var contains
     /// a value not in this list.
     pub profiles: Option<Vec<String>>,
+
+    /// Enable automatic validation after loading.
+    /// Generated from: `#[env_config(validate)]`
+    pub validate: bool,
 }
 
 impl EnvConfigAttr {
@@ -694,6 +713,10 @@ impl EnvConfigAttr {
                         // Just the flag: #[env_config(dotenv)]
                         result.dotenv = Some(DotenvConfig::Default);
                     }
+
+                    Ok(())
+                } else if meta.path.is_ident("validate") {
+                    result.validate = true;
 
                     Ok(())
                 } else if meta.path.is_ident("prefix") {

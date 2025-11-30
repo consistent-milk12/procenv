@@ -1,25 +1,25 @@
 //! Example: EnvConfig with validator integration
 //!
-//! This demonstrates the recommended dual-derive pattern for combining
-//! procenv (environment variable loading) with validator (runtime validation).
+//! This demonstrates the `#[env_config(validate)]` attribute which automatically
+//! runs validator crate validation after loading environment variables.
 //!
 //! Run with valid config:
 //!   DATABASE_URL=postgres://localhost/mydb \
 //!   ADMIN_EMAIL=admin@example.com \
 //!   PORT=8080 \
 //!   MAX_WORKERS=4 \
-//!   cargo run --package procenv --example validator_example
+//!   cargo run --package procenv --example validator_example --features validator
 //!
 //! Run with invalid email (validation error):
 //!   DATABASE_URL=postgres://localhost/mydb \
 //!   ADMIN_EMAIL=not-an-email \
-//!   cargo run --package procenv --example validator_example
+//!   cargo run --package procenv --example validator_example --features validator
 //!
 //! Run with port out of range (validation error):
 //!   DATABASE_URL=postgres://localhost/mydb \
 //!   ADMIN_EMAIL=admin@example.com \
 //!   PORT=99999 \
-//!   cargo run --package procenv --example validator_example
+//!   cargo run --package procenv --example validator_example --features validator
 
 use procenv::EnvConfig;
 use validator::Validate;
@@ -35,8 +35,11 @@ fn validate_not_root(username: &str) -> Result<(), validator::ValidationError> {
 }
 
 /// Server configuration with both env loading and validation
-/// Note: EnvConfig generates a custom Debug impl that masks secret fields
+///
+/// The `#[env_config(validate)]` attribute enables the `from_env_validated()`
+/// method which combines loading and validation in a single step.
 #[derive(EnvConfig, Validate)]
+#[env_config(validate)]
 struct ServerConfig {
     /// Database connection URL (must be valid URL format)
     #[env(var = "DATABASE_URL")]
@@ -69,44 +72,26 @@ struct ServerConfig {
 }
 
 fn main() {
-    // Step 1: Load configuration from environment variables
-    // This handles: missing vars, type parsing errors
-    println!("Step 1: Loading configuration from environment...");
-    let config = match ServerConfig::from_env() {
+    println!("Loading and validating configuration...\n");
+
+    // Use from_env_validated() to load AND validate in one step
+    // This handles:
+    // - Missing required variables (procenv::Error::Missing)
+    // - Type parsing errors (procenv::Error::Parse)
+    // - Validation failures (procenv::Error::Validation)
+    let config = match ServerConfig::from_env_validated() {
         Ok(cfg) => {
-            println!("  Configuration loaded successfully!\n");
+            println!("Configuration loaded and validated successfully!\n");
             cfg
         }
         Err(e) => {
-            eprintln!("Configuration loading failed:");
+            eprintln!("Configuration error:");
             eprintln!("{:?}", miette::Report::from(e));
             std::process::exit(1);
         }
     };
 
-    // Step 2: Validate the loaded configuration
-    // This handles: semantic validation (email format, URL format, ranges, custom rules)
-    println!("Step 2: Validating configuration...");
-    if let Err(validation_errors) = config.validate() {
-        eprintln!("Configuration validation failed:\n");
-
-        // Pretty-print validation errors
-        for (field, errors) in validation_errors.field_errors() {
-            eprintln!("  Field '{}' has {} error(s):", field, errors.len());
-            for err in errors {
-                let msg = err
-                    .message
-                    .as_ref()
-                    .map(|m| m.to_string())
-                    .unwrap_or_else(|| format!("validation '{}' failed", err.code));
-                eprintln!("    - {}", msg);
-            }
-        }
-        std::process::exit(1);
-    }
-    println!("  Validation passed!\n");
-
-    // Step 3: Use the validated configuration
+    // Use the validated configuration
     println!("Configuration summary:");
     println!("  DATABASE_URL = {}", config.database_url);
     println!("  PORT         = {}", config.port);
