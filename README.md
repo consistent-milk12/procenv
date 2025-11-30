@@ -87,22 +87,24 @@ procenv = { path = "path/to/procenv", features = ["validator"] }
 
 ### Feature Flags
 
-| Feature     | Default | Description                                     |
-| ----------- | ------- | ----------------------------------------------- |
-| `dotenv`    | **Yes** | Load `.env` files automatically                 |
-| `secrecy`   | **Yes** | `SecretString` support for sensitive data       |
-| `clap`      | **Yes** | CLI argument integration                        |
-| `file`      | **Yes** | File configuration (enables JSON)               |
-| `toml`      | **Yes** | TOML file support                               |
-| `yaml`      | **Yes** | YAML file support                               |
-| `json`      | **Yes** | JSON file support (included in `file`)          |
-| `file-all`  | **Yes** | Meta-feature: enables `toml` + `yaml` + `json`  |
-| `validator` | No      | Validation integration with `validator` crate   |
-| `serde`     | No      | Standalone serde support (without file loading) |
-| `tracing`   | No      | Tracing instrumentation                         |
-| `provider`  | No      | Provider trait and ConfigLoader                 |
-| `async`     | No      | Async provider support (requires `provider`)    |
-| `full`      | No      | Enable all features                             |
+Default features: `secrecy`, `dotenv`, `file-all`, `clap`
+
+| Feature     | Default  | Description                                     |
+| ----------- | -------- | ----------------------------------------------- |
+| `secrecy`   | **Yes**  | `SecretString` support for sensitive data       |
+| `dotenv`    | **Yes**  | Load `.env` files automatically                 |
+| `clap`      | **Yes**  | CLI argument integration                        |
+| `file-all`  | **Yes**  | Meta-feature: enables `toml` + `yaml` + `json`  |
+| `file`      | via above| Base file config (JSON); enabled by format features |
+| `toml`      | via above| TOML file support (implies `file`)              |
+| `yaml`      | via above| YAML file support (implies `file`)              |
+| `json`      | via above| JSON file support (implies `file`)              |
+| `validator` | No       | Validation integration with `validator` crate   |
+| `serde`     | No       | Standalone serde support (without file loading) |
+| `tracing`   | No       | Tracing instrumentation                         |
+| `provider`  | No       | Provider trait and ConfigLoader                 |
+| `async`     | No       | Async provider support (requires `provider`)    |
+| `full`      | No       | Enable all features                             |
 
 ## Attribute Reference
 
