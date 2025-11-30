@@ -380,6 +380,17 @@ pub trait FieldGenerator {
                 .cloned();
         })
     }
+
+    /// Returns the field name identifier (alias for `name()`).
+    /// Used for runtime access generation.
+    fn field_name(&self) -> Option<&Ident> {
+        Some(self.name())
+    }
+
+    /// Whether this field is optional (type is `Option<T>`).
+    fn is_optional(&self) -> bool {
+        false
+    }
 }
 
 // ============================================================================

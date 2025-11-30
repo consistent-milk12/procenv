@@ -399,4 +399,8 @@ impl FieldGenerator for OptionalField {
     fn validate_fn(&self) -> Option<&str> {
         self.validate.as_deref()
     }
+
+    fn is_optional(&self) -> bool {
+        true
+    }
 }

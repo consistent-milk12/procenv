@@ -156,6 +156,8 @@ pub mod loader;
 pub mod provider;
 pub mod value;
 
+pub use value::ConfigValue;
+
 #[cfg(feature = "dotenv")]
 pub use provider::DotenvProvider;
 #[cfg(feature = "file")]

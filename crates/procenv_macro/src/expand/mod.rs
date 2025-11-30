@@ -41,6 +41,7 @@ pub mod config;
 pub mod debug;
 pub mod env;
 pub mod example;
+pub mod runtime;
 pub mod sources;
 pub mod validation;
 
@@ -110,6 +111,10 @@ impl Expander {
             &env_config_attr,
         );
 
+        // Generate runtime access methods
+        let runtime_access_impl =
+            runtime::generate_runtime_access_impl(struct_name, generics, &generators);
+
         let combined = quote! {
             #from_env_impl
             #debug_impl
@@ -119,6 +124,7 @@ impl Expander {
             #file_config_impl
             #validated_impl
             #external_prefix_impl
+            #runtime_access_impl
         };
 
         Ok(combined.into())

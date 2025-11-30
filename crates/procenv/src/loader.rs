@@ -199,19 +199,50 @@ impl ConfigLoader {
         T::Err: std::error::Error + Send + Sync + 'static,
     {
         match self.get(key) {
-            Some(pv) => {
-                pv.value.parse::<T>().map(Some).map_err(|e| {
-                    Error::parse(
-                        key.to_string(),
-                        pv.value.clone(),
-                        pv.secret,
-                        std::any::type_name::<T>(),
-                        Box::new(e),
-                    )
-                })
-            }
+            Some(pv) => pv.value.parse::<T>().map(Some).map_err(|e| {
+                Error::parse(
+                    key.to_string(),
+                    pv.value.clone(),
+                    pv.secret,
+                    std::any::type_name::<T>(),
+                    Box::new(e),
+                )
+            }),
             None => Ok(None),
         }
+    }
+
+    /// Gets a raw string value from the provider chain.
+    pub fn get_str(&mut self, key: &str) -> Option<String> {
+        self.get(key).map(|pv| pv.value)
+    }
+
+    /// Gets a value with its source attribution.
+    pub fn get_with_source(&mut self, key: &str) -> Option<(String, crate::Source)> {
+        self.get(key).map(|pv| (pv.value, pv.source.to_source()))
+    }
+
+    /// Gets a value as a `ConfigValue` (stored as string).
+    pub fn get_value(&mut self, key: &str) -> Option<crate::ConfigValue> {
+        self.get(key)
+            .map(|pv| crate::ConfigValue::from_str_value(pv.value))
+    }
+
+    /// Gets a value as a `ConfigValue` with automatic type inference.
+    pub fn get_value_infer(&mut self, key: &str) -> Option<crate::ConfigValue> {
+        self.get(key)
+            .map(|pv| crate::ConfigValue::from_str_infer(&pv.value))
+    }
+
+    /// Gets value, source, and secret flag together.
+    pub fn get_full(&mut self, key: &str) -> Option<(String, crate::Source, bool)> {
+        self.get(key)
+            .map(|pv| (pv.value, pv.source.to_source(), pv.secret))
+    }
+
+    /// Lists all cached keys.
+    pub fn cached_keys(&self) -> Vec<&str> {
+        self.cache.keys().map(|s| s.as_str()).collect()
     }
 
     /// Checks if any errors have occurred.

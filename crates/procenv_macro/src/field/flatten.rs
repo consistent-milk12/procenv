@@ -190,4 +190,8 @@ impl FieldGenerator for FlattenField {
     fn env_var_name(&self) -> Option<&str> {
         None // Flatten fields don't have their own env var
     }
+
+    fn field_name(&self) -> Option<&Ident> {
+        None // Flatten fields don't participate in direct key access
+    }
 }

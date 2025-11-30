@@ -249,6 +249,37 @@ pub enum Error {
         /// The error message from clap.
         message: String,
     },
+
+    /// A requested configuration key was not found.
+    #[diagnostic(code(procenv::key_not_found))]
+    KeyNotFound {
+        /// The key that was requested.
+        key: String,
+
+        /// List of available keys.
+        available: Vec<String>,
+
+        /// Help message.
+        #[help]
+        help: String,
+    },
+
+    /// A type mismatch occurred during runtime value access.
+    #[diagnostic(code(procenv::type_mismatch))]
+    TypeMismatch {
+        /// The key being accessed.
+        key: String,
+
+        /// The expected type.
+        expected: &'static str,
+
+        /// The actual type found.
+        found: &'static str,
+
+        /// Help message.
+        #[help]
+        help: String,
+    },
 }
 
 #[cfg(feature = "file")]
@@ -320,6 +351,23 @@ impl Display for Error {
             #[cfg(feature = "clap")]
             Error::Cli { message } => {
                 write!(f, "CLI argument error: {}", message)
+            }
+
+            Error::KeyNotFound { key, .. } => {
+                write!(f, "configuration key not found: {}", key)
+            }
+
+            Error::TypeMismatch {
+                key,
+                expected,
+                found,
+                ..
+            } => {
+                write!(
+                    f,
+                    "type mismatch for '{}': expected {}, found {}",
+                    key, expected, found
+                )
             }
         }
     }
@@ -401,6 +449,30 @@ impl Debug for Error {
 
             #[cfg(feature = "clap")]
             Error::Cli { message } => f.debug_struct("Cli").field("message", message).finish(),
+
+            Error::KeyNotFound {
+                key,
+                available,
+                help,
+            } => f
+                .debug_struct("KeyNotFound")
+                .field("key", key)
+                .field("available", available)
+                .field("help", help)
+                .finish(),
+
+            Error::TypeMismatch {
+                key,
+                expected,
+                found,
+                help,
+            } => f
+                .debug_struct("TypeMismatch")
+                .field("key", key)
+                .field("expected", expected)
+                .field("found", found)
+                .field("help", help)
+                .finish(),
         }
     }
 }
@@ -481,6 +553,37 @@ impl Error {
             var,
             help: format!("valid profiles are: {}", valid_list),
             valid_profiles,
+        }
+    }
+
+    /// Creates a KeyNotFound error.
+    pub fn key_not_found(key: impl Into<String>, available: Vec<String>) -> Self {
+        let available_str = if available.is_empty() {
+            "none".to_string()
+        } else {
+            available.join(", ")
+        };
+        Error::KeyNotFound {
+            key: key.into(),
+            help: format!("available keys: {}", available_str),
+            available,
+        }
+    }
+
+    /// Creates a TypeMismatch error.
+    pub fn type_mismatch(
+        key: impl Into<String>,
+        expected: &'static str,
+        found: &'static str,
+    ) -> Self {
+        Error::TypeMismatch {
+            key: key.into(),
+            expected,
+            found,
+            help: format!(
+                "the value is stored as {}, try accessing it as that type",
+                found
+            ),
         }
     }
 }

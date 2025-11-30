@@ -378,6 +378,54 @@ if let Some(value) = loader.get("database_password") {
 
 Run the example: `cargo run --example custom_provider --features provider`
 
+## Runtime Access
+
+Access configuration values dynamically by key after loading:
+
+```rust
+let config = Config::from_env()?;
+
+// Get all field names
+let keys = Config::keys();  // ["database_url", "port", "api_key"]
+
+// Access fields by key
+if let Some(port) = config.get_str("port") {
+    println!("Port: {}", port);
+}
+
+// Check if key exists
+if Config::has_key("database_url") {
+    // ...
+}
+
+// Nested config access (via flatten)
+let db_host = config.get_str("database.host");
+```
+
+For partial loading without instantiating a full config struct, use `ConfigLoader`:
+
+```rust
+use procenv::ConfigLoader;
+
+let mut loader = ConfigLoader::new().with_env();
+
+// Get raw string value
+let port = loader.get_str("PORT");
+
+// Get with type inference
+let value = loader.get_value_infer("PORT");
+if let Some(port) = value.and_then(|v| v.to_u16()) {
+    println!("Port: {}", port);
+}
+
+// Get with source attribution
+if let Some((value, source)) = loader.get_with_source("DATABASE_URL") {
+    println!("{} from {}", value, source);
+}
+```
+
+**Note:** Secret fields return `<redacted>` from `get_str()`. Fields using `format` attribute (serde deserialization) are excluded from runtime access.
+
 ## Generated Methods
 
 | Method                              | Description                                                                |
@@ -390,6 +438,9 @@ Run the example: `cargo run --example custom_provider --features provider`
 | `from_env_validated()`              | Load + validate (requires `validator` feature + `#[env_config(validate)]`) |
 | `from_env_validated_with_sources()` | Load + validate with source attribution                                    |
 | `env_example()`                     | Generate `.env.example` content                                            |
+| `keys()`                            | Returns all field names as static strings                                  |
+| `get_str(key)`                      | Get field value as string by key                                           |
+| `has_key(key)`                      | Check if a key exists                                                      |
 
 ## Comparison with Established Crates
 
@@ -404,7 +455,7 @@ Run the example: `cargo run --example custom_provider --features provider`
 | Compile-time derive     | Yes          | No         | No         | Yes    |
 | File configs            | Yes          | Yes        | Yes        | No     |
 | Custom providers        | **Yes**      | Yes        | Yes        | No     |
-| Runtime value access    | No           | Yes        | Yes        | No     |
+| Runtime value access    | **Yes**      | Yes        | Yes        | No     |
 | Hot reload              | No           | No         | Partial    | No     |
 
 ## Performance
@@ -431,7 +482,6 @@ Run benchmarks: `cargo bench --bench config_loading`
 
 ## Known Limitations
 
-- **All-or-nothing loading** - No runtime access to individual config values (Phase D planned)
 - **No hot reload** - Can't watch for config file changes
 - **Zero production usage** - Untested in real-world applications
 
@@ -466,6 +516,7 @@ procenv/
 │               ├── env.rs    # from_env() generation
 │               ├── config.rs # from_config() generation
 │               ├── args.rs   # from_args() CLI support
+│               ├── runtime.rs # Runtime access (keys, get_str, has_key)
 │               └── ...
 ├── PROGRESS.md               # Development roadmap
 └── CLAUDE.md                 # AI assistant instructions
@@ -483,10 +534,10 @@ procenv/
 - Secret masking in errors and Debug
 - Validation integration with `validator` crate
 - Provider extensibility (custom sources like Vault, SSM)
+- Runtime access (`keys()`, `get_str()`, `has_key()`)
 
 **Planned (see [PROGRESS.md](PROGRESS.md)):**
 
-- Phase D: Runtime value access
 - Phase E: Hot reload
 - Phase F: Documentation & examples
 - Phase G: Advanced features (interactive mode, schema export)
