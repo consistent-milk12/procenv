@@ -593,16 +593,42 @@ Benchmarks on Linux (AMD Ryzen, divan):
 | Scenario                 | Time    | Notes                          |
 | ------------------------ | ------- | ------------------------------ |
 | Baseline `std::env::var` | ~145 ns | Single lookup + parse          |
-| Small config (3 fields)  | ~478 ns | ~3x baseline, minimal overhead |
+| Small config (3 fields)  | ~500 ns | ~3x baseline, minimal overhead |
 | Medium config (6 fields) | ~1.8 µs | Linear scaling                 |
 | Large config (30 fields) | ~15 µs  | ~500 ns/field                  |
 | Nested config (4 levels) | ~1.3 µs | Flatten has no overhead        |
 | With source tracking     | ~2x     | `from_env_with_sources()`      |
 | Secret field handling    | ~555 ns | Negligible SecretString cost   |
 
+### Comparison with Other Crates
+
+procenv uses compile-time code generation, making it significantly faster than runtime serde-based crates:
+
+| Crate (3 fields) | Time      | vs procenv |
+| ---------------- | --------- | ---------- |
+| **procenv**      | ~860 ns   | 1x         |
+| envy             | ~22.5 µs  | 26x slower |
+| figment          | ~27.8 µs  | 32x slower |
+| config           | ~30.9 µs  | 36x slower |
+
+| Crate (6 fields) | Time      | vs procenv |
+| ---------------- | --------- | ---------- |
+| **procenv**      | ~1.8 µs   | 1x         |
+| envy             | ~25.4 µs  | 14x slower |
+| figment          | ~28.2 µs  | 16x slower |
+| config           | ~31.3 µs  | 18x slower |
+
+**Why procenv is faster:**
+
+- **Compile-time code generation** - Direct `std::env::var()` calls, no runtime reflection
+- **No serde overhead** - Other crates deserialize through serde at runtime
+- **No intermediate structures** - config/figment build HashMaps before deserializing
+- **Direct type parsing** - Uses `str::parse()` without type erasure
+
 **Key takeaways:**
 
 - ~500 ns per field for env var lookup + parsing
+- 14-36x faster than serde-based alternatives for env var loading
 - Source attribution doubles cost (still <35 µs for 30 fields)
 - Nested/flattened configs scale linearly
 - Secret masking adds minimal overhead

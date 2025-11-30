@@ -1,8 +1,14 @@
 //! Performance benchmarks for procenv config loading.
 //!
 //! Run with: `cargo bench -p procenv`
+//!
+//! Includes comparison benchmarks against:
+//! - `envy` - Simple env-to-struct via serde
+//! - `figment` - Layered configuration library
+//! - `config` - Hierarchical configuration library
 
 use procenv::EnvConfig;
+use serde::Deserialize;
 
 fn main() {
     // Setup environment variables for benchmarks
@@ -45,6 +51,15 @@ fn setup_env() {
         std::env::set_var("DEEP_L1", "level1");
         std::env::set_var("DEEP_L2", "level2");
         std::env::set_var("DEEP_L3", "level3");
+
+        // Comparison benchmark vars (for envy, figment, config crates)
+        // These use uppercase field names as expected by envy
+        std::env::set_var("CMP_HOST", "localhost");
+        std::env::set_var("CMP_PORT", "8080");
+        std::env::set_var("CMP_DEBUG", "true");
+        std::env::set_var("CMP_LOG_LEVEL", "info");
+        std::env::set_var("CMP_WORKERS", "4");
+        std::env::set_var("CMP_TIMEOUT", "30");
     }
 }
 
@@ -407,5 +422,124 @@ fn baseline_env_var_parse() -> u16 {
     std::env::var("SMALL_PORT")
         .unwrap_or_else(|_| "8080".to_string())
         .parse()
+        .unwrap()
+}
+
+// ============================================================================
+// Comparison Benchmarks: procenv vs envy vs figment vs config
+// ============================================================================
+
+/// Small config struct for comparison benchmarks (serde-based)
+#[derive(Deserialize)]
+struct CmpSmallConfig {
+    host: String,
+    port: u16,
+    debug: bool,
+}
+
+/// Medium config struct for comparison benchmarks (serde-based)
+#[derive(Deserialize)]
+struct CmpMediumConfig {
+    host: String,
+    port: u16,
+    debug: bool,
+    log_level: String,
+    workers: u32,
+    timeout: u64,
+}
+
+/// procenv version of small comparison config
+#[derive(EnvConfig)]
+struct ProcenvCmpSmall {
+    #[env(var = "CMP_HOST")]
+    host: String,
+    #[env(var = "CMP_PORT")]
+    port: u16,
+    #[env(var = "CMP_DEBUG")]
+    debug: bool,
+}
+
+/// procenv version of medium comparison config
+#[derive(EnvConfig)]
+struct ProcenvCmpMedium {
+    #[env(var = "CMP_HOST")]
+    host: String,
+    #[env(var = "CMP_PORT")]
+    port: u16,
+    #[env(var = "CMP_DEBUG")]
+    debug: bool,
+    #[env(var = "CMP_LOG_LEVEL")]
+    log_level: String,
+    #[env(var = "CMP_WORKERS")]
+    workers: u32,
+    #[env(var = "CMP_TIMEOUT")]
+    timeout: u64,
+}
+
+// ----------------------------------------------------------------------------
+// Small Config Comparison (3 fields)
+// ----------------------------------------------------------------------------
+
+#[divan::bench(name = "cmp_small_procenv")]
+fn cmp_small_procenv() -> ProcenvCmpSmall {
+    ProcenvCmpSmall::from_env().unwrap()
+}
+
+#[divan::bench(name = "cmp_small_envy")]
+fn cmp_small_envy() -> CmpSmallConfig {
+    envy::prefixed("CMP_").from_env::<CmpSmallConfig>().unwrap()
+}
+
+#[divan::bench(name = "cmp_small_figment")]
+fn cmp_small_figment() -> CmpSmallConfig {
+    use figment::{Figment, providers::Env};
+    Figment::new()
+        .merge(Env::prefixed("CMP_"))
+        .extract::<CmpSmallConfig>()
+        .unwrap()
+}
+
+#[divan::bench(name = "cmp_small_config")]
+fn cmp_small_config() -> CmpSmallConfig {
+    use config::{Config, Environment};
+    Config::builder()
+        .add_source(Environment::with_prefix("CMP"))
+        .build()
+        .unwrap()
+        .try_deserialize::<CmpSmallConfig>()
+        .unwrap()
+}
+
+// ----------------------------------------------------------------------------
+// Medium Config Comparison (6 fields)
+// ----------------------------------------------------------------------------
+
+#[divan::bench(name = "cmp_medium_procenv")]
+fn cmp_medium_procenv() -> ProcenvCmpMedium {
+    ProcenvCmpMedium::from_env().unwrap()
+}
+
+#[divan::bench(name = "cmp_medium_envy")]
+fn cmp_medium_envy() -> CmpMediumConfig {
+    envy::prefixed("CMP_").from_env::<CmpMediumConfig>().unwrap()
+}
+
+#[divan::bench(name = "cmp_medium_figment")]
+fn cmp_medium_figment() -> CmpMediumConfig {
+    use figment::{Figment, providers::Env};
+    Figment::new()
+        .merge(Env::prefixed("CMP_"))
+        .extract::<CmpMediumConfig>()
+        .unwrap()
+}
+
+#[divan::bench(name = "cmp_medium_config")]
+fn cmp_medium_config() -> CmpMediumConfig {
+    use config::{Config, Environment};
+    Config::builder()
+        .add_source(Environment::with_prefix("CMP"))
+        .build()
+        .unwrap()
+        .try_deserialize::<CmpMediumConfig>()
         .unwrap()
 }

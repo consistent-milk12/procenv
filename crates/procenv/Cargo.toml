@@ -87,13 +87,17 @@ crossbeam-channel = { workspace = true, optional = true }
 trybuild = "1.0.114"
 serial_test = "3.2.0"
 proptest = "1.9.0"
-tempfile = "3.20"
+tempfile = "3.23.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
 serde-saphyr = { workspace = true }
 clap = { workspace = true }
 divan = { workspace = true }
+figment = { workspace = true }
+envy = { workspace = true }
+config = { workspace = true }
+
 
 [[example]]
 name = "file_config"

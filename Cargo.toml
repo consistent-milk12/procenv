@@ -38,6 +38,11 @@ notify = { version = "8.2.0", default-features = false, features = [
 parking_lot = "0.12.5"
 crossbeam-channel = "0.5.15"
 
+# For benchmarks
+envy = { version = "0.4.2" }
+figment = { version = "0.10.19", features = ["env"] }
+config = { version = "0.15.19", features = ["ini", "json"] }
+
 # =============================================================================
 # Build Profiles
 # =============================================================================
