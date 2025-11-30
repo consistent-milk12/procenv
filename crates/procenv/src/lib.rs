@@ -125,6 +125,8 @@ pub use file::{ConfigBuilder, FileFormat, FileUtils, OriginTracker};
 // Provider extensibility (Phase C)
 pub mod loader;
 pub mod provider;
+// pub mod value;
+
 #[cfg(feature = "dotenv")]
 pub use provider::DotenvProvider;
 #[cfg(feature = "file")]
@@ -142,6 +144,107 @@ use std::path::PathBuf;
 use std::{error::Error as StdError, fmt::Debug};
 
 use miette::{Diagnostic, Severity};
+
+// ============================================================================
+// Diagnostic Code Registry
+// ============================================================================
+
+/// Centralized registry of diagnostic error codes used throughout procenv.
+///
+/// These constants document all error codes used in `#[diagnostic(code(...))]`
+/// attributes. While Rust's proc-macro system requires literal strings in
+/// attributes, this module provides a single source of truth for:
+///
+/// - Error code documentation
+/// - Programmatic error code matching
+/// - External tooling integration
+///
+/// # Error Code Format
+///
+/// All codes follow the pattern `procenv::<category>` where category describes
+/// the error type:
+///
+/// | Code | Description |
+/// |------|-------------|
+/// | `procenv::missing_var` | Required variable not set |
+/// | `procenv::invalid_utf8` | Variable contains non-UTF8 bytes |
+/// | `procenv::parse_error` | Value failed type conversion |
+/// | `procenv::multiple_errors` | Multiple errors occurred |
+/// | `procenv::invalid_profile` | Invalid profile name |
+/// | `procenv::provider_error` | Provider operation failed |
+/// | `procenv::validation_error` | Validation constraint violated |
+/// | `procenv::cli_error` | CLI argument parsing failed |
+/// | `procenv::file_*` | File-related errors |
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use procenv::diagnostic_codes;
+///
+/// // Match on error codes programmatically
+/// if error.code() == Some(&diagnostic_codes::MISSING_VAR.into()) {
+///     println!("A required variable is missing");
+/// }
+/// ```
+pub mod diagnostic_codes {
+    /// Required environment variable not set.
+    pub const MISSING_VAR: &str = "procenv::missing_var";
+
+    /// Environment variable contains invalid UTF-8.
+    pub const INVALID_UTF8: &str = "procenv::invalid_utf8";
+
+    /// Value failed to parse as expected type.
+    pub const PARSE_ERROR: &str = "procenv::parse_error";
+
+    /// Multiple configuration errors occurred.
+    pub const MULTIPLE_ERRORS: &str = "procenv::multiple_errors";
+
+    /// Invalid profile name specified.
+    pub const INVALID_PROFILE: &str = "procenv::invalid_profile";
+
+    /// Provider operation failed.
+    pub const PROVIDER_ERROR: &str = "procenv::provider_error";
+
+    /// Validation constraint violated.
+    #[cfg(feature = "validator")]
+    pub const VALIDATION_ERROR: &str = "procenv::validation_error";
+
+    /// Individual field validation error.
+    #[cfg(feature = "validator")]
+    pub const FIELD_VALIDATION_ERROR: &str = "procenv::field_validation_error";
+
+    /// CLI argument parsing failed.
+    #[cfg(feature = "clap")]
+    pub const CLI_ERROR: &str = "procenv::cli_error";
+
+    /// Configuration file not found.
+    #[cfg(feature = "file")]
+    pub const FILE_NOT_FOUND: &str = "procenv::file::not_found";
+
+    /// Configuration file parsing failed.
+    #[cfg(feature = "file")]
+    pub const FILE_PARSE_ERROR: &str = "procenv::file::parse_error";
+
+    /// Required field missing from file.
+    #[cfg(feature = "file")]
+    pub const FILE_MISSING_FIELD: &str = "procenv::file::missing_field";
+
+    /// File field type mismatch.
+    #[cfg(feature = "file")]
+    pub const FILE_TYPE_ERROR: &str = "procenv::file::type_error";
+
+    /// Provider key not found.
+    pub const PROVIDER_NOT_FOUND: &str = "procenv::provider::not_found";
+
+    /// Provider connection error.
+    pub const PROVIDER_CONNECTION: &str = "procenv::provider::connection";
+
+    /// Provider invalid value.
+    pub const PROVIDER_INVALID_VALUE: &str = "procenv::provider::invalid_value";
+
+    /// Provider unavailable.
+    pub const PROVIDER_UNAVAILABLE: &str = "procenv::provider::unavailable";
+}
 
 /// Errors that can occur when loading configuration from environment variables.
 ///
@@ -543,62 +646,83 @@ impl ValidationFieldError {
         self
     }
 
+    /// Extract the human-readable message from a validation error.
+    ///
+    /// Returns the custom message if set, otherwise generates a default
+    /// message using the validation code.
+    fn extract_message(error: &::validator::ValidationError) -> String {
+        error
+            .message
+            .as_ref()
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| format!("validation failed: {}", error.code))
+    }
+
+    /// Extract validation parameters as a formatted string.
+    ///
+    /// Filters out the "value" parameter (which contains the actual value)
+    /// and formats remaining parameters as "key: value" pairs.
+    fn extract_params(error: &::validator::ValidationError) -> Option<String> {
+        if error.params.is_empty() {
+            return None;
+        }
+
+        let param_strs: Vec<String> = error
+            .params
+            .iter()
+            .filter(|(k, _)| *k != "value")
+            .map(|(k, v)| format!("{k}: {v}"))
+            .collect();
+
+        if param_strs.is_empty() {
+            None
+        } else {
+            Some(param_strs.join(", "))
+        }
+    }
+
+    /// Create a ValidationFieldError from a validator error.
+    fn from_validator_error(field: &str, error: &::validator::ValidationError) -> Self {
+        let message = Self::extract_message(error);
+        let params = Self::extract_params(error);
+
+        let mut err = Self::new(field.to_string(), error.code.to_string(), message);
+
+        if let Some(p) = params {
+            err = err.with_params(p);
+        }
+
+        err
+    }
+
     /// Convert validator crate errors to our error type.
     pub fn validation_errors_to_procenv(
         errors: ::validator::ValidationErrors,
     ) -> Vec<ValidationFieldError> {
-        let mut result = Vec::new();
+        // Collect flat field errors
+        let flat_errors = errors
+            .field_errors()
+            .into_iter()
+            .flat_map(|(field, field_errors)| {
+                field_errors
+                    .iter()
+                    .map(move |error| Self::from_validator_error(&field, error))
+            });
 
-        for (field, field_errors) in errors.field_errors() {
-            for error in field_errors {
-                let message = error
-                    .message
-                    .as_ref()
-                    .map(|m| m.to_string())
-                    .unwrap_or_else(|| format!("validation failed: {}", error.code));
-
-                let params = if error.params.is_empty() {
-                    None
-                } else {
-                    let param_strs: Vec<String> = error
-                        .params
-                        .iter()
-                        .filter(|(k, _)| *k != "value")
-                        .map(|(k, v)| format!("{k}: {v}"))
-                        .collect();
-
-                    if param_strs.is_empty() {
-                        None
-                    } else {
-                        Some(param_strs.join(", "))
-                    }
-                };
-
-                let mut err =
-                    ValidationFieldError::new(field.to_string(), error.code.to_string(), message);
-
-                if let Some(param) = params {
-                    err = err.with_params(param);
-                }
-
-                result.push(err);
-            }
-        }
-
-        // Also handle nested struct errors
-        for (field, nested_errors) in errors.errors() {
-            if let ::validator::ValidationErrorsKind::Struct(nested) = nested_errors {
+        // Collect nested struct errors with prefixed field paths
+        let nested_errors = errors.errors().into_iter().filter_map(|(field, nested)| {
+            if let ::validator::ValidationErrorsKind::Struct(nested) = nested {
                 let nested_field_errors = Self::validation_errors_to_procenv(*nested.clone());
-
-                for mut err in nested_field_errors {
+                Some(nested_field_errors.into_iter().map(move |mut err| {
                     err.field = format!("{}.{}", field, err.field);
-
-                    result.push(err);
-                }
+                    err
+                }))
+            } else {
+                None
             }
-        }
+        });
 
-        result
+        flat_errors.chain(nested_errors.flatten()).collect()
     }
 }
 

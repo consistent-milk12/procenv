@@ -1,6 +1,6 @@
 //! Environment variable provider.
 
-use super::{Provider, ProviderResult, ProviderSource, ProviderValue};
+use super::{priority, Provider, ProviderResult, ProviderSource, ProviderValue};
 use crate::Source;
 
 /// Provider that reads configuration from environment variables.
@@ -69,8 +69,6 @@ impl Provider for EnvProvider {
 
             Err(std::env::VarError::NotPresent) => Ok(None),
 
-            Err(std::env::VarError::NotPresent) => Ok(None),
-
             Err(std::env::VarError::NotUnicode(_)) => Err(super::ProviderError::InvalidValue {
                 key: full_key,
                 provider: self.name().to_string(),
@@ -80,8 +78,7 @@ impl Provider for EnvProvider {
     }
 
     fn priority(&self) -> u32 {
-        // High priority, after CLI (10)
-        20
+        priority::ENVIRONMENT
     }
 }
 
@@ -104,6 +101,6 @@ mod tests {
     #[test]
     fn test_env_provider_priority() {
         let provider = EnvProvider::new();
-        assert_eq!(provider.priority(), 20);
+        assert_eq!(provider.priority(), priority::ENVIRONMENT);
     }
 }

@@ -891,6 +891,38 @@ impl FileUtils {
         offset
     }
 
+    /// Search for a field using multiple patterns and return the value offset.
+    ///
+    /// This is a helper function that extracts the common pattern matching
+    /// logic used across different file formats.
+    ///
+    /// # Arguments
+    /// - `content` - The content to search in
+    /// - `base_offset` - Offset adjustment for nested content
+    /// - `patterns` - Patterns to search for (e.g., `["field:", "field :"]`)
+    /// - `value_finder` - Predicate to find where the value starts after the delimiter
+    fn find_value_with_patterns<F>(
+        content: &str,
+        base_offset: usize,
+        patterns: &[String],
+        value_finder: F,
+    ) -> Option<usize>
+    where
+        F: Fn(char) -> bool,
+    {
+        for pattern in patterns {
+            if let Some(pos) = content.find(pattern.as_str()) {
+                let after_delimiter = pos + pattern.len();
+                let remaining = &content[after_delimiter..];
+
+                if let Some(value_start) = remaining.find(&value_finder) {
+                    return Some(base_offset + after_delimiter + value_start);
+                }
+            }
+        }
+        None
+    }
+
     /// Find a field's value location in file content.
     ///
     /// Handles nested paths like "database.port" by finding the parent section first.
@@ -916,59 +948,46 @@ impl FileUtils {
 
         match format {
             FileFormat::Json => {
-                // JSON: "field": or "field" :
-                let patterns = [format!("\"{leaf_field}\":"), format!("\"{leaf_field}\" :")];
-
-                for pattern in &patterns {
-                    if let Some(pos) = search_content.find(pattern.as_str()) {
-                        let after_colon = pos + pattern.len();
-                        let remaining = &search_content[after_colon..];
-
-                        if let Some(value_start) = remaining.find(|c: char| !c.is_whitespace()) {
-                            return Some(base_offset + after_colon + value_start);
-                        }
-                    }
-                }
+                let patterns = vec![
+                    format!("\"{leaf_field}\":"),
+                    format!("\"{leaf_field}\" :"),
+                ];
+                Self::find_value_with_patterns(
+                    search_content,
+                    base_offset,
+                    &patterns,
+                    |c: char| !c.is_whitespace(),
+                )
             }
 
             #[cfg(feature = "toml")]
             FileFormat::Toml => {
-                // TOML: field = or field=
-                let patterns = [format!("{leaf_field} ="), format!("{leaf_field}=")];
-
-                for pattern in &patterns {
-                    if let Some(pos) = search_content.find(pattern.as_str()) {
-                        let after_eq = pos + pattern.len();
-                        let remaining = &search_content[after_eq..];
-
-                        if let Some(value_start) = remaining.find(|c: char| !c.is_whitespace()) {
-                            return Some(base_offset + after_eq + value_start);
-                        }
-                    }
-                }
+                let patterns = vec![
+                    format!("{leaf_field} ="),
+                    format!("{leaf_field}="),
+                ];
+                Self::find_value_with_patterns(
+                    search_content,
+                    base_offset,
+                    &patterns,
+                    |c: char| !c.is_whitespace(),
+                )
             }
 
             #[cfg(feature = "yaml")]
             FileFormat::Yaml => {
-                // YAML: field: or field :
-                let patterns = [format!("{leaf_field}:"), format!("{leaf_field} :")];
-
-                for pattern in &patterns {
-                    if let Some(pos) = search_content.find(pattern.as_str()) {
-                        let after_colon = pos + pattern.len();
-                        let remaining = &search_content[after_colon..];
-
-                        if let Some(value_start) =
-                            remaining.find(|c: char| !c.is_whitespace() && (c != '\n'))
-                        {
-                            return Some(base_offset + after_colon + value_start);
-                        }
-                    }
-                }
+                let patterns = vec![
+                    format!("{leaf_field}:"),
+                    format!("{leaf_field} :"),
+                ];
+                Self::find_value_with_patterns(
+                    search_content,
+                    base_offset,
+                    &patterns,
+                    |c: char| !c.is_whitespace() && c != '\n',
+                )
             }
         }
-
-        None
     }
 
     /// Find the content region for a nested section.

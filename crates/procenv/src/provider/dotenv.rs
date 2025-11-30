@@ -1,6 +1,6 @@
 //! Dotenv file provider.
 
-use super::{Provider, ProviderResult, ProviderSource, ProviderValue};
+use super::{priority, Provider, ProviderResult, ProviderSource, ProviderValue};
 use crate::Source;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -150,7 +150,7 @@ impl Provider for DotenvProvider {
     }
 
     fn priority(&self) -> u32 {
-        30 // After env (20), before config files (50)
+        priority::DOTENV
     }
 }
 
@@ -181,6 +181,6 @@ SINGLE='single quoted'
     #[test]
     fn test_dotenv_priority() {
         let provider = DotenvProvider::default();
-        assert_eq!(provider.priority(), 30);
+        assert_eq!(provider.priority(), priority::DOTENV);
     }
 }

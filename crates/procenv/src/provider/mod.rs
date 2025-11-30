@@ -60,6 +60,58 @@ use thiserror::Error as ThisError;
 use crate::Source;
 
 // ============================================================================
+// Provider Priority Registry
+// ============================================================================
+
+/// Centralized provider priority constants.
+///
+/// Lower values = higher priority. Providers are queried in priority order,
+/// and the first one to return a value wins.
+///
+/// # Priority Hierarchy
+///
+/// ```text
+/// CLI (10) > Environment (20) > Dotenv (30) > Profile (40) > ConfigFile (50) > Custom (100) > Default (1000)
+/// ```
+///
+/// # Usage
+///
+/// When implementing a custom provider, use these constants or values
+/// relative to them to ensure consistent priority ordering:
+///
+/// ```rust,ignore
+/// impl Provider for MyProvider {
+///     fn priority(&self) -> u32 {
+///         // Between environment and dotenv
+///         priority::ENVIRONMENT + 5
+///     }
+/// }
+/// ```
+pub mod priority {
+    /// CLI arguments have highest priority (overrides everything).
+    pub const CLI: u32 = 10;
+
+    /// Environment variables (process env).
+    pub const ENVIRONMENT: u32 = 20;
+
+    /// Dotenv files (.env, .env.local, etc.).
+    pub const DOTENV: u32 = 30;
+
+    /// Profile-specific defaults (#[profile(dev = "...")]).
+    pub const PROFILE: u32 = 40;
+
+    /// Configuration files (TOML, JSON, YAML).
+    pub const CONFIG_FILE: u32 = 50;
+
+    /// Default priority for custom providers.
+    pub const CUSTOM: u32 = 100;
+
+    /// Compile-time defaults (#[env(default = "...")]).
+    /// Lowest priority - only used when nothing else provides a value.
+    pub const DEFAULT: u32 = 1000;
+}
+
+// ============================================================================
 // Provider Value Types
 // ============================================================================
 
@@ -356,10 +408,12 @@ pub trait Provider: Send + Sync {
 
     /// Returns the priority of this provider (lower = higher priority).
     ///
-    /// The default is 100. Override to change when this provider is queried
-    /// relative to others in the chain.
+    /// The default is [`priority::CUSTOM`] (100). Override to change when
+    /// this provider is queried relative to others in the chain.
+    ///
+    /// See the [`priority`] module for standard priority constants.
     fn priority(&self) -> u32 {
-        100
+        priority::CUSTOM
     }
 
     /// Returns whether this provider should be skipped when a key is not found.
@@ -438,8 +492,10 @@ pub trait AsyncProvider: Send + Sync {
     }
 
     /// Returns the priority of this provider.
+    ///
+    /// See the [`priority`] module for standard priority constants.
     fn priority(&self) -> u32 {
-        100
+        priority::CUSTOM
     }
 }
 

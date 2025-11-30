@@ -1,6 +1,6 @@
 //! File-based configuration provider.
 
-use super::{Provider, ProviderError, ProviderResult, ProviderSource, ProviderValue};
+use super::{priority, Provider, ProviderError, ProviderResult, ProviderSource, ProviderValue};
 use crate::Source;
 use crate::file::{ConfigBuilder, FileFormat, FileUtils, OriginTracker};
 use serde_json::Value;
@@ -124,7 +124,7 @@ impl Provider for FileProvider {
     }
 
     fn priority(&self) -> u32 {
-        50 // After env/dotenv, before custom providers
+        priority::CONFIG_FILE
     }
 }
 
