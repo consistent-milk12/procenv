@@ -2,6 +2,7 @@
 name = "procenv"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license = "MIT"
 description = "Derive macro for declarative environment variable configuration with error accumulation and rich diagnostics"
 repository = "https://github.com/consistent-milk12/procenv"
