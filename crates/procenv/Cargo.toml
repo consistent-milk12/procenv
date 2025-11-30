@@ -80,6 +80,7 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 serde-saphyr = { workspace = true }
 clap = { workspace = true }
+divan = { workspace = true }
 
 [[example]]
 name = "file_config"
@@ -92,3 +93,7 @@ required-features = ["validator"]
 [[example]]
 name = "custom_provider"
 required-features = ["provider"]
+
+[[bench]]
+name = "config_loading"
+harness = false

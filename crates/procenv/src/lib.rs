@@ -321,6 +321,20 @@ pub enum Error {
         #[related]
         errors: Vec<ValidationFieldError>,
     },
+
+    /// An error occurred while parsing CLI arguments.
+    ///
+    /// This variant wraps errors from the `clap` crate when CLI argument
+    /// parsing fails.
+    #[cfg(feature = "clap")]
+    #[diagnostic(
+        code(procenv::cli_error),
+        help("check the CLI arguments and try again")
+    )]
+    Cli {
+        /// The error message from clap.
+        message: String,
+    },
 }
 
 #[cfg(feature = "file")]
@@ -387,6 +401,11 @@ impl Display for Error {
             #[cfg(feature = "validator")]
             Error::Validation { errors } => {
                 write!(f, "{} validation error(s) occurred", errors.len())
+            }
+
+            #[cfg(feature = "clap")]
+            Error::Cli { message } => {
+                write!(f, "CLI argument error: {}", message)
             }
         }
     }
@@ -465,6 +484,9 @@ impl Debug for Error {
                 .debug_struct("Validation")
                 .field("errors", errors)
                 .finish(),
+
+            #[cfg(feature = "clap")]
+            Error::Cli { message } => f.debug_struct("Cli").field("message", message).finish(),
         }
     }
 }

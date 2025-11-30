@@ -1095,6 +1095,26 @@ impl Expander {
                     std::result::Result::Ok(config)
                 }
 
+                /// Load configuration from a custom argument iterator.
+                ///
+                /// This is useful for testing or when you want to parse arguments
+                /// from a source other than `std::env::args()`.
+                ///
+                /// Priority: CLI arguments > Environment variables > .env files > Defaults
+                ///
+                /// # Errors
+                ///
+                /// Returns an error if required values are missing, fail to parse,
+                /// or if CLI argument parsing fails.
+                pub fn from_args_from<I, T>(args: I) -> std::result::Result<Self, ::procenv::Error>
+                where
+                    I: IntoIterator<Item = T>,
+                    T: Into<std::ffi::OsString> + Clone,
+                {
+                    let (config, _) = Self::from_args_from_with_sources(args)?;
+                    std::result::Result::Ok(config)
+                }
+
                 /// Load configuration from CLI arguments with source attribution.
                 ///
                 /// Returns both the config and information about where each value came from.
@@ -1104,8 +1124,37 @@ impl Expander {
                         .version(env!("CARGO_PKG_VERSION"))
                         #(.arg(#clap_args))*;
 
-                    // Parse arguments
+                    // Parse arguments from std::env::args()
                     let __matches = __cmd.get_matches();
+
+                    Self::__from_args_matches(__matches)
+                }
+
+                /// Load configuration from a custom argument iterator with source attribution.
+                ///
+                /// This is useful for testing or when you want to parse arguments
+                /// from a source other than `std::env::args()`.
+                ///
+                /// Returns both the config and information about where each value came from.
+                pub fn from_args_from_with_sources<I, T>(args: I) -> std::result::Result<(Self, ::procenv::ConfigSources), ::procenv::Error>
+                where
+                    I: IntoIterator<Item = T>,
+                    T: Into<std::ffi::OsString> + Clone,
+                {
+                    // Build clap Command
+                    let __cmd = ::clap::Command::new(env!("CARGO_PKG_NAME"))
+                        .version(env!("CARGO_PKG_VERSION"))
+                        #(.arg(#clap_args))*;
+
+                    // Parse arguments from iterator
+                    let __matches = __cmd.try_get_matches_from(args)
+                        .map_err(|e| ::procenv::Error::Cli { message: e.to_string() })?;
+
+                    Self::__from_args_matches(__matches)
+                }
+
+                /// Internal helper to process clap matches into config.
+                fn __from_args_matches(__matches: ::clap::ArgMatches) -> std::result::Result<(Self, ::procenv::ConfigSources), ::procenv::Error> {
 
                     // Extract CLI values
                     #(#cli_extractions)*
