@@ -68,8 +68,8 @@ use super::origin::ValueOrigin;
 /// - Coercing string values to appropriate JSON types
 ///
 /// Most users will interact with these utilities indirectly through
-/// [`ConfigBuilder`] or the derive macro. Direct use is available
-/// for advanced use cases.
+/// [`ConfigBuilder`](crate::file::ConfigBuilder) or the derive macro.
+/// Direct use is available for advanced use cases.
 pub struct FileUtils;
 
 impl FileUtils {

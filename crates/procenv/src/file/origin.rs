@@ -52,8 +52,8 @@ pub(crate) struct ValueOrigin {
 /// Tracks the origin of configuration values for precise error reporting.
 ///
 /// This struct maintains a mapping of configuration paths (e.g., `"database.port"`)
-/// to their source files. It's used internally by [`ConfigBuilder`] to provide
-/// accurate source locations in error messages.
+/// to their source files. It's used internally by [`ConfigBuilder`](crate::file::ConfigBuilder)
+/// to provide accurate source locations in error messages.
 ///
 /// When a type mismatch or parse error occurs during deserialization,
 /// `OriginTracker` enables the error message to point to the exact file

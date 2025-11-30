@@ -83,16 +83,45 @@
 //! | `from_config()` | Load from files + env vars (layered) |
 //! | `from_config_with_sources()` | Layered loading with source attribution |
 //! | `from_args()` | Load from CLI arguments + env |
+//! | `from_env_validated()` | Load + validate (requires `validator` feature) |
 //! | `env_example()` | Generate `.env.example` template |
+//! | `keys()` | List all field names |
+//! | `get_str(&self, key)` | Get field value as string |
+//! | `has_key(key)` | Check if field exists |
 //!
 //! ## Feature Flags
 //!
 //! | Feature | Description | Default |
 //! |---------|-------------|---------|
-//! | `file` | Config file support | No |
-//! | `toml` | TOML file parsing | No |
-//! | `yaml` | YAML file parsing | No |
-//! | `secrecy` | [`secrecy`] crate integration | No |
+//! | `dotenv` | Load `.env` files automatically | **Yes** |
+//! | `secrecy` | [`SecretString`] support for sensitive fields | No |
+//! | `clap` | CLI argument integration with [`clap`] | No |
+//! | `file` | Base config file support (JSON) | No |
+//! | `toml` | TOML file parsing (implies `file`) | No |
+//! | `yaml` | YAML file parsing (implies `file`) | No |
+//! | `file-all` | All file formats (toml + yaml + json) | No |
+//! | `validator` | Validation via [`validator`] crate | No |
+//! | `provider` | Custom provider extensibility | No |
+//! | `watch` | Hot reload with file watching | No |
+//! | `full` | Enable all features | No |
+//!
+//! ## Secret Handling
+//!
+//! procenv provides two-tier secret protection:
+//!
+//! 1. **Error-time protection** (always on): Secrets marked with `#[env(secret)]`
+//!    are never stored in error messages. Uses [`MaybeRedacted`] internally.
+//!
+//! 2. **Runtime protection** (requires `secrecy` feature): Use [`SecretString`]
+//!    for values that should be protected in memory and Debug output.
+//!
+//! ```rust,ignore
+//! #[derive(EnvConfig)]
+//! struct Config {
+//!     #[env(var = "API_KEY", secret)]  // Protected in errors
+//!     api_key: SecretString,            // Protected at runtime
+//! }
+//! ```
 //!
 //! ## Error Handling
 //!

@@ -33,8 +33,9 @@ use std::path::Path;
 /// Supported configuration file formats.
 ///
 /// The format is automatically detected from the file extension when using
-/// [`FileUtils::parse_file`] or [`ConfigBuilder::file`]. You can also
-/// explicitly specify a format with [`FileUtils::parse_str`].
+/// [`FileUtils::parse_file`](crate::file::FileUtils::parse_file) or
+/// [`ConfigBuilder::file`](crate::file::ConfigBuilder::file). You can also
+/// explicitly specify a format with [`FileUtils::parse_str`](crate::file::FileUtils::parse_str).
 ///
 /// # Feature Flags
 ///
