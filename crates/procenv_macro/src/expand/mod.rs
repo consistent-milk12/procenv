@@ -27,7 +27,6 @@
 //! all configuration issues at once.
 
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as QuoteStream;
 use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
