@@ -96,6 +96,12 @@ pub use format::FileFormat;
 pub use origin::OriginTracker;
 pub use utils::FileUtils;
 
+// Re-export serde_json types for macro-generated code
+// These allow the macro to reference types through ::procenv::file:: paths
+// which provides clear compile errors when the file feature isn't enabled
+pub use serde_json::Map as JsonMap;
+pub use serde_json::Value as JsonValue;
+
 // ============================================================================
 // Unit Tests
 // ============================================================================

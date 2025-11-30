@@ -437,10 +437,10 @@ pub fn generate_config_defaults_impl(
             let ty = g.field_type()?;
 
             Some(quote! {
-                if let ::serde_json::Value::Object(nested) = <#ty>::__config_defaults() {
+                if let ::procenv::file::JsonValue::Object(nested) = <#ty>::__config_defaults() {
                     __map.insert(
                         #field_name.to_string(),
-                        ::serde_json::Value::Object(nested)
+                        ::procenv::file::JsonValue::Object(nested)
                     );
                 }
             })
@@ -448,15 +448,14 @@ pub fn generate_config_defaults_impl(
         .collect();
 
     quote! {
-        #[cfg(feature = "file")]
         impl #impl_generics #struct_name #type_generics #where_clause {
             /// Returns default values for this config as a JSON object.
             #[doc(hidden)]
-            pub fn __config_defaults() -> ::serde_json::Value {
-                let mut __map = ::serde_json::Map::new();
+            pub fn __config_defaults() -> ::procenv::file::JsonValue {
+                let mut __map = ::procenv::file::JsonMap::new();
                 #(#default_entries)*
                 #(#flatten_entries)*
-                ::serde_json::Value::Object(__map)
+                ::procenv::file::JsonValue::Object(__map)
             }
         }
     }

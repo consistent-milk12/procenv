@@ -158,6 +158,21 @@ pub mod diagnostic_codes;
 mod error;
 pub use error::{Error, MaybeRedacted};
 
+/// A Result type that displays errors with miette's fancy formatting.
+///
+/// Use this as your main function return type for pretty error output:
+///
+/// ```rust,ignore
+/// fn main() -> procenv::Result<()> {
+///     let config = Config::from_env()?;
+///     Ok(())
+/// }
+/// ```
+///
+/// This is equivalent to `miette::Result<T>` and will automatically
+/// display configuration errors with colors, help text, and error codes.
+pub type Result<T> = miette::Result<T>;
+
 // Source attribution types
 mod source;
 pub use source::{ConfigSources, Source, ValueSource};
@@ -167,6 +182,11 @@ pub use source::{ConfigSources, Source, ValueSource};
 mod validation;
 #[cfg(feature = "validator")]
 pub use validation::{ValidationFieldError, validation_errors_to_procenv};
+// Re-export Validate trait for macro-generated code
+// This allows the macro to reference ::procenv::Validate instead of ::validator::Validate
+// which provides clear compile errors when the validator feature isn't enabled
+#[cfg(feature = "validator")]
+pub use validator::Validate;
 
 // ============================================================================
 // File Configuration Support

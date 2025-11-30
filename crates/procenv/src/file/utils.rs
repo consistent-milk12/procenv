@@ -98,7 +98,10 @@ impl FileUtils {
             offset
         } else {
             // Search backwards for a valid boundary
-            (0..offset).rev().find(|&i| s.is_char_boundary(i)).unwrap_or(0)
+            (0..offset)
+                .rev()
+                .find(|&i| s.is_char_boundary(i))
+                .unwrap_or(0)
         }
     }
 

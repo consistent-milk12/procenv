@@ -1249,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "procenv"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "clap",
  "config",
@@ -1282,7 +1282,7 @@ dependencies = [
 
 [[package]]
 name = "procenv_macro"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -521,7 +521,9 @@ fn cmp_medium_procenv() -> ProcenvCmpMedium {
 
 #[divan::bench(name = "cmp_medium_envy")]
 fn cmp_medium_envy() -> CmpMediumConfig {
-    envy::prefixed("CMP_").from_env::<CmpMediumConfig>().unwrap()
+    envy::prefixed("CMP_")
+        .from_env::<CmpMediumConfig>()
+        .unwrap()
 }
 
 #[divan::bench(name = "cmp_medium_figment")]

@@ -427,7 +427,7 @@ mod file_utils_properties {
         assert_eq!(base["a"], 1);
         assert_eq!(base["b"]["c"], 2); // preserved from base
         assert_eq!(base["b"]["d"], 3); // added from overlay
-        assert_eq!(base["e"], 4);      // added from overlay
+        assert_eq!(base["e"], 4); // added from overlay
     }
 }
 

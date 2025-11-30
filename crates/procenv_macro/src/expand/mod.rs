@@ -80,9 +80,17 @@ impl Expander {
             &env_config_attr,
         );
 
-        // Always generate __config_defaults for nested struct support
-        let config_defaults_impl =
-            config::generate_config_defaults_impl(struct_name, generics, &generators);
+        // Only generate __config_defaults when file-based config is used.
+        // This method is used by from_config() to merge defaults from nested structs.
+        // Uses types from ::procenv::file:: which only exist when file feature is enabled.
+        //
+        // For env-only configs (even with flatten), __config_defaults is not needed.
+        // The from_env() path handles flatten differently (via from_env_with_external_prefix).
+        let config_defaults_impl = if !env_config_attr.files.is_empty() {
+            config::generate_config_defaults_impl(struct_name, generics, &generators)
+        } else {
+            quote! {}
+        };
 
         // Generate file config method if files are configured
         let file_config_impl = if !env_config_attr.files.is_empty() {

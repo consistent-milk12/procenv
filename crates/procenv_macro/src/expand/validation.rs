@@ -90,10 +90,9 @@ pub fn generate_validated_impl(
         .collect();
 
     quote! {
-        #[cfg(feature = "validator")]
         impl #impl_generics #struct_name #type_generics #where_clause
         where
-            Self: ::validator::Validate,
+            Self: ::procenv::Validate,
         {
             /// Load configuration from environment variables with validation.
             pub fn from_env_validated() -> std::result::Result<Self, ::procenv::Error> {
@@ -101,7 +100,7 @@ pub fn generate_validated_impl(
 
                 let mut __validation_errors: Vec<::procenv::ValidationFieldError> = Vec::new();
 
-                if let Err(e) = ::validator::Validate::validate(&__config) {
+                if let Err(e) = ::procenv::Validate::validate(&__config) {
                     __validation_errors.extend(::procenv::validation_errors_to_procenv(e));
                 }
 
@@ -121,7 +120,7 @@ pub fn generate_validated_impl(
 
                 let mut __validation_errors: Vec<::procenv::ValidationFieldError> = Vec::new();
 
-                if let Err(e) = ::validator::Validate::validate(&__config) {
+                if let Err(e) = ::procenv::Validate::validate(&__config) {
                     __validation_errors.extend(::procenv::validation_errors_to_procenv(e));
                 }
 
@@ -174,10 +173,9 @@ pub fn generate_from_config_validated_impl(
         .collect();
 
     quote! {
-        #[cfg(all(feature = "validator", feature = "file"))]
         impl #impl_generics #struct_name #type_generics #where_clause
         where
-            Self: ::validator::Validate + ::serde::de::DeserializeOwned,
+            Self: ::procenv::Validate + ::serde::de::DeserializeOwned,
         {
             /// Load configuration from files with validation.
             pub fn from_config_validated() -> std::result::Result<Self, ::procenv::Error> {
@@ -185,7 +183,7 @@ pub fn generate_from_config_validated_impl(
 
                 let mut __validation_errors: Vec<::procenv::ValidationFieldError> = Vec::new();
 
-                if let Err(e) = ::validator::Validate::validate(&__config) {
+                if let Err(e) = ::procenv::Validate::validate(&__config) {
                     __validation_errors.extend(::procenv::validation_errors_to_procenv(e));
                 }
 
@@ -208,7 +206,7 @@ pub fn generate_from_config_validated_impl(
 
                 let mut __validation_errors: Vec<::procenv::ValidationFieldError> = Vec::new();
 
-                if let Err(e) = ::validator::Validate::validate(&__config) {
+                if let Err(e) = ::procenv::Validate::validate(&__config) {
                     __validation_errors.extend(::procenv::validation_errors_to_procenv(e));
                 }
 

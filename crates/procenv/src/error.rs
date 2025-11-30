@@ -451,17 +451,28 @@ impl Display for Error {
     }
 }
 
-// Manual Debug impl for secret masking
+// Manual Debug impl that produces miette-like human-readable output.
+// This makes errors more readable when using `fn main() -> Result<(), Error>`
+// or when not explicitly wrapping with miette::Report.
+//
+// For the full miette experience with colors and source spans, use:
+// `eprintln!("{:?}", miette::Report::from(e));`
 impl Debug for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Missing { var, help } => f
-                .debug_struct("Missing")
-                .field("var", var)
-                .field("help", help)
-                .finish(),
+            Error::Missing { var, help } => {
+                writeln!(f, "procenv::missing_var")?;
+                writeln!(f)?;
+                writeln!(f, "  x missing required environment variable: {var}")?;
+                write!(f, "  help: {help}")
+            }
 
-            Error::InvalidUtf8 { var } => f.debug_struct("InvalidUtf8").field("var", var).finish(),
+            Error::InvalidUtf8 { var } => {
+                writeln!(f, "procenv::invalid_utf8")?;
+                writeln!(f)?;
+                writeln!(f, "  x environment variable contains invalid UTF-8: {var}")?;
+                write!(f, "  help: ensure the variable contains valid UTF-8 text")
+            }
 
             Error::Parse {
                 var,
@@ -470,79 +481,97 @@ impl Debug for Error {
                 help,
                 source,
             } => {
-                // MaybeRedacted's Debug handles redaction automatically
-                f.debug_struct("Parse")
-                    .field("var", var)
-                    .field("value", value)
-                    .field("expected_type", expected_type)
-                    .field("help", help)
-                    .field("source", source)
-                    .finish()
+                writeln!(f, "procenv::parse_error")?;
+                writeln!(f)?;
+                writeln!(f, "  x failed to parse {var}: {source}")?;
+                writeln!(f, "  | value: {value:?}")?;
+                writeln!(f, "  | expected: {expected_type}")?;
+                write!(f, "  help: {help}")
             }
 
             Error::Multiple { errors } => {
-                f.debug_struct("Multiple").field("errors", errors).finish()
+                writeln!(f, "procenv::multiple_errors")?;
+                writeln!(f)?;
+                writeln!(f, "  x {} configuration error(s) occurred", errors.len())?;
+                writeln!(f, "  help: fix all listed configuration errors")?;
+                for error in errors {
+                    writeln!(f)?;
+                    write!(f, "{error:?}")?;
+                }
+                Ok(())
             }
 
             #[cfg(feature = "file")]
-            Error::File { source } => f.debug_struct("File").field("source", source).finish(),
+            Error::File { source } => write!(f, "{source:?}"),
 
             Error::InvalidProfile {
                 profile,
                 var,
                 valid_profiles,
                 help,
-            } => f
-                .debug_struct("InvalidProfile")
-                .field("profile", profile)
-                .field("var", var)
-                .field("valid_profiles", valid_profiles)
-                .field("help", help)
-                .finish(),
+            } => {
+                writeln!(f, "procenv::invalid_profile")?;
+                writeln!(f)?;
+                writeln!(f, "  x invalid profile '{profile}' in {var}")?;
+                writeln!(f, "  | valid profiles: {}", valid_profiles.join(", "))?;
+                write!(f, "  help: {help}")
+            }
 
             Error::Provider {
                 provider,
                 message,
                 help,
-            } => f
-                .debug_struct("Provider")
-                .field("provider", provider)
-                .field("message", message)
-                .field("help", help)
-                .finish(),
+            } => {
+                writeln!(f, "procenv::provider_error")?;
+                writeln!(f)?;
+                writeln!(f, "  x provider '{provider}' failed: {message}")?;
+                write!(f, "  help: {help}")
+            }
 
             #[cfg(feature = "validator")]
-            Error::Validation { errors } => f
-                .debug_struct("Validation")
-                .field("errors", errors)
-                .finish(),
+            Error::Validation { errors } => {
+                writeln!(f, "procenv::validation_error")?;
+                writeln!(f)?;
+                writeln!(f, "  x validation failed")?;
+                for error in errors {
+                    writeln!(f, "  | {}: {} ({})", error.field, error.message, error.code)?;
+                }
+                write!(f, "  help: fix the validation errors listed above")
+            }
 
             #[cfg(feature = "clap")]
-            Error::Cli { message } => f.debug_struct("Cli").field("message", message).finish(),
+            Error::Cli { message } => {
+                writeln!(f, "procenv::cli_error")?;
+                writeln!(f)?;
+                writeln!(f, "  x CLI argument parsing failed")?;
+                write!(f, "  | {message}")
+            }
 
             Error::KeyNotFound {
                 key,
                 available,
                 help,
-            } => f
-                .debug_struct("KeyNotFound")
-                .field("key", key)
-                .field("available", available)
-                .field("help", help)
-                .finish(),
+            } => {
+                writeln!(f, "procenv::key_not_found")?;
+                writeln!(f)?;
+                writeln!(f, "  x configuration key '{key}' not found")?;
+                writeln!(f, "  | available keys: {}", available.join(", "))?;
+                write!(f, "  help: {help}")
+            }
 
             Error::TypeMismatch {
                 key,
                 expected,
                 found,
                 help,
-            } => f
-                .debug_struct("TypeMismatch")
-                .field("key", key)
-                .field("expected", expected)
-                .field("found", found)
-                .field("help", help)
-                .finish(),
+            } => {
+                writeln!(f, "procenv::type_mismatch")?;
+                writeln!(f)?;
+                writeln!(f, "  x type mismatch for key '{key}'")?;
+                writeln!(f, "  | expected: {expected}")?;
+                writeln!(f, "  | found: {found}")?;
+                write!(f, "  help: {help}")
+            }
         }
     }
 }
