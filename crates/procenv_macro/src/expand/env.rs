@@ -193,6 +193,19 @@ pub fn generate_field_loader(
     let default_value = field.default_value();
     let used_default_ident = format_ident!("__{}_used_default", name);
 
+    // Generate the parse/deserialize expression based on format
+    let (parse_expr, type_desc) = if let Some(format) = field.format_config() {
+        let expr = match format {
+            "json" => quote! { ::serde_json::from_str(&val) },
+            "toml" => quote! { ::toml::from_str(&val) },
+            "yaml" => quote! { ::serde_saphyr::from_str(&val) },
+            _ => quote! { val.parse() },
+        };
+        (expr, format!("{} data", format.to_uppercase()))
+    } else {
+        (quote! { val.parse() }, ty.clone())
+    };
+
     // Generate fallback code for when no env var and no profile match
     let no_value_handling = if let Some(default) = default_value {
         quote! {
@@ -247,17 +260,17 @@ pub fn generate_field_loader(
                 }
             };
 
-        // Parse the value
+        // Parse/deserialize the value (uses serde for format fields, FromStr otherwise)
         let #name = match __value_to_parse {
             std::option::Option::Some(val) => {
-                match val.parse() {
+                match #parse_expr {
                     std::result::Result::Ok(v) => std::option::Option::Some(v),
                     std::result::Result::Err(e) => {
                         __errors.push(::procenv::Error::parse(
                             #env_var,
                             if #secret { "[REDACTED]".to_string() } else { val },
                             #secret,
-                            #ty,
+                            #type_desc,
                             std::boxed::Box::new(e),
                         ));
                         std::option::Option::None
@@ -317,16 +330,10 @@ pub fn generate_from_env_with_external_prefix_impl(
     // Collect all env var names for pre-dotenv check
     let env_var_names: Vec<_> = generators.iter().filter_map(|g| g.env_var_name()).collect();
 
-    // Generate loaders using the prefixed version
+    // Generate loaders using the prefixed version with profile support
     let loaders: Vec<QuoteStream> = generators
         .iter()
-        .map(|g| {
-            if let Some(format) = g.format_config() {
-                g.generate_format_loader(format)
-            } else {
-                g.generate_loader_with_external_prefix()
-            }
-        })
+        .map(|g| generate_field_loader_with_prefix(g.as_ref()))
         .collect();
 
     // Generate simplified source tracking
@@ -453,5 +460,209 @@ fn generate_simple_source_tracking(field: &dyn FieldGenerator) -> QuoteStream {
         }
     } else {
         quote! {}
+    }
+}
+
+/// Generate field loader with external prefix, format, and profile support.
+///
+/// This is used by `__from_env_with_external_prefix` for flattened/nested structs.
+/// It handles all the same features as `generate_field_loader` but uses the
+/// prefixed env var names.
+fn generate_field_loader_with_prefix(field: &dyn FieldGenerator) -> QuoteStream {
+    // Flatten fields delegate to nested type
+    if field.is_flatten() {
+        return field.generate_loader_with_external_prefix();
+    }
+
+    // Check if this field has profile config - if so, generate profile-aware code
+    let Some(profile_config) = field.profile_config() else {
+        // No profile - use the format-aware prefixed loader
+        if let Some(format) = field.format_config() {
+            return generate_format_loader_with_prefix(field, format);
+        }
+        return field.generate_loader_with_external_prefix();
+    };
+
+    // Field has profile values - generate profile-aware loader with prefix and format support
+    let name = field.name();
+    let profile_used_ident = format_ident!("__{}_from_profile", name);
+    let effective_var_ident = format_ident!("__{}_effective_var", name);
+
+    // Generate match arms for each profile
+    let match_arms: Vec<QuoteStream> = profile_config
+        .values
+        .iter()
+        .map(|(profile_name, value)| {
+            quote! {
+                std::option::Option::Some(#profile_name) => std::option::Option::Some(#value),
+            }
+        })
+        .collect();
+
+    // Get env var name and type info for parsing
+    let env_var = field.env_var_name().unwrap_or("");
+    let ty = field.type_name();
+    let secret = field.is_secret();
+    let default_value = field.default_value();
+    let used_default_ident = format_ident!("__{}_used_default", name);
+
+    // Generate the parse/deserialize expression based on format
+    let (parse_expr, type_desc) = if let Some(format) = field.format_config() {
+        let expr = match format {
+            "json" => quote! { ::serde_json::from_str(&val) },
+            "toml" => quote! { ::toml::from_str(&val) },
+            "yaml" => quote! { ::serde_saphyr::from_str(&val) },
+            _ => quote! { val.parse() },
+        };
+        (expr, format!("{} data", format.to_uppercase()))
+    } else {
+        (quote! { val.parse() }, ty.clone())
+    };
+
+    // Generate fallback code for when no env var and no profile match
+    let no_value_handling = if let Some(default) = default_value {
+        quote! {
+            #used_default_ident = true;
+            (std::option::Option::Some(#default.to_string()), false)
+        }
+    } else {
+        quote! {
+            (std::option::Option::None, false)
+        }
+    };
+
+    // Generate error or None handling for missing value
+    let missing_value_handling = if default_value.is_some() {
+        quote! { std::option::Option::None }
+    } else {
+        quote! {
+            __errors.push(::procenv::Error::missing(&#effective_var_ident));
+            std::option::Option::None
+        }
+    };
+
+    quote! {
+        // Build effective env var name with external prefix
+        let #effective_var_ident: std::string::String = format!(
+            "{}{}",
+            __external_prefix.unwrap_or(""),
+            #env_var
+        );
+
+        // Track if we used the compile-time default
+        let mut #used_default_ident = false;
+
+        // Determine profile default value (if profile matches)
+        let __profile_default: std::option::Option<&str> = match __profile.as_deref() {
+            #(#match_arms)*
+            _ => std::option::Option::None,
+        };
+
+        // Get value to parse: env var > profile > default
+        let (__value_to_parse, #profile_used_ident): (std::option::Option<std::string::String>, bool) =
+            match std::env::var(&#effective_var_ident) {
+                std::result::Result::Ok(val) => {
+                    (std::option::Option::Some(val), false)
+                }
+                std::result::Result::Err(std::env::VarError::NotPresent) => {
+                    match __profile_default {
+                        std::option::Option::Some(profile_val) => {
+                            (std::option::Option::Some(profile_val.to_string()), true)
+                        }
+                        std::option::Option::None => {
+                            #no_value_handling
+                        }
+                    }
+                }
+                std::result::Result::Err(std::env::VarError::NotUnicode(_)) => {
+                    __errors.push(::procenv::Error::InvalidUtf8 { var: #effective_var_ident.clone() });
+                    (std::option::Option::None, false)
+                }
+            };
+
+        // Parse/deserialize the value (uses serde for format fields, FromStr otherwise)
+        let #name = match __value_to_parse {
+            std::option::Option::Some(val) => {
+                match #parse_expr {
+                    std::result::Result::Ok(v) => std::option::Option::Some(v),
+                    std::result::Result::Err(e) => {
+                        __errors.push(::procenv::Error::parse(
+                            &#effective_var_ident,
+                            if #secret { "[REDACTED]".to_string() } else { val },
+                            #secret,
+                            #type_desc,
+                            std::boxed::Box::new(e),
+                        ));
+                        std::option::Option::None
+                    }
+                }
+            }
+            std::option::Option::None => {
+                #missing_value_handling
+            }
+        };
+    }
+}
+
+/// Generate format-aware loader with external prefix support.
+///
+/// Used for fields with `format = "json/toml/yaml"` in flattened structs.
+fn generate_format_loader_with_prefix(field: &dyn FieldGenerator, format: &str) -> QuoteStream {
+    let name = field.name();
+    let env_var = field.env_var_name().unwrap_or("");
+    let secret = field.is_secret();
+    let effective_var_ident = format_ident!("__{}_effective_var", name);
+    let profile_used_ident = format_ident!("__{}_from_profile", name);
+
+    let deserialize_call = match format {
+        "json" => quote! { ::serde_json::from_str(&val) },
+        "toml" => quote! { ::toml::from_str(&val) },
+        "yaml" => quote! { ::serde_saphyr::from_str(&val) },
+        _ => unreachable!("Format validated at parse time"),
+    };
+
+    let format_name = format.to_uppercase();
+
+    quote! {
+        // Build effective env var name with external prefix
+        let #effective_var_ident: std::string::String = format!(
+            "{}{}",
+            __external_prefix.unwrap_or(""),
+            #env_var
+        );
+
+        // No profile for format-only fields in this path
+        let #profile_used_ident: bool = false;
+
+        let #name = match std::env::var(&#effective_var_ident) {
+            std::result::Result::Ok(val) => {
+                match #deserialize_call {
+                    std::result::Result::Ok(v) => std::option::Option::Some(v),
+                    std::result::Result::Err(e) => {
+                        __errors.push(::procenv::Error::parse(
+                            &#effective_var_ident,
+                            val,
+                            #secret,
+                            concat!(#format_name, " data"),
+                            std::boxed::Box::new(e),
+                        ));
+                        std::option::Option::None
+                    }
+                }
+            }
+            std::result::Result::Err(e) => {
+                match e {
+                    std::env::VarError::NotPresent => {
+                        __errors.push(::procenv::Error::missing(&#effective_var_ident));
+                    }
+                    std::env::VarError::NotUnicode(_) => {
+                        __errors.push(::procenv::Error::InvalidUtf8 {
+                            var: #effective_var_ident.clone(),
+                        });
+                    }
+                }
+                std::option::Option::None
+            }
+        };
     }
 }

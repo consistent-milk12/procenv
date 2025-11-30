@@ -100,7 +100,7 @@ impl FieldGenerator for RequiredField {
                         // Parse succeeded
                         std::result::Result::Ok(v) => std::option::Option::Some(v),
 
-                        // Prase failed - record error and continue
+                        // Parse failed - record error and continue
                         std::result::Result::Err(e) => {
                             __errors.push(::procenv::Error::parse(
                                 #env_var,

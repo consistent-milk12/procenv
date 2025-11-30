@@ -55,7 +55,7 @@ use syn::Ident;
 use crate::field::FieldGenerator;
 use crate::parse::EnvConfigAttr;
 
-use super::env::generate_dotenv_load;
+use super::env::{generate_dotenv_load, generate_field_loader, generate_profile_setup};
 
 /// Generate the from_args() method for CLI argument integration.
 pub fn generate_from_args_impl(
@@ -78,8 +78,11 @@ pub fn generate_from_args_impl(
     // Generate loaders that check CLI first, then env
     let loaders: Vec<QuoteStream> = generators
         .iter()
-        .map(|g| generate_cli_aware_loader(g.as_ref()))
+        .map(|g| generate_cli_aware_loader(g.as_ref(), env_config))
         .collect();
+
+    // Generate profile setup code
+    let profile_setup = generate_profile_setup(env_config);
 
     // Generate source tracking with CLI awareness
     let source_tracking: Vec<QuoteStream> = generators
@@ -176,6 +179,9 @@ pub fn generate_from_args_impl(
                 let mut __errors: std::vec::Vec<::procenv::Error> = std::vec::Vec::new();
                 let mut __sources = ::procenv::ConfigSources::new();
 
+                // Read and validate profile (if configured)
+                #profile_setup
+
                 // Load each field (CLI first, then env)
                 #(#loaders)*
 
@@ -203,19 +209,18 @@ pub fn generate_from_args_impl(
 }
 
 /// Generate a loader that checks CLI value first, then falls back to env.
-fn generate_cli_aware_loader(field: &dyn FieldGenerator) -> QuoteStream {
+fn generate_cli_aware_loader(
+    field: &dyn FieldGenerator,
+    env_config: &EnvConfigAttr,
+) -> QuoteStream {
     let name = field.name();
     let cli_var = format_ident!("__{}_cli", name);
     let from_cli_var = format_ident!("__{}_from_cli", name);
 
     // Check if this field has CLI config
     if field.cli_config().is_some() {
-        // Use format-aware env loader if format is specified
-        let env_loader = if let Some(format) = field.format_config() {
-            field.generate_format_loader(format)
-        } else {
-            field.generate_loader()
-        };
+        // Use the profile-aware field loader for env fallback
+        let env_loader = generate_field_loader(field, env_config);
 
         // For CLI-enabled fields: check CLI first, then env
         let cli_arg_name = format!("--{}", field.cli_config().unwrap().long.as_ref().unwrap());
@@ -259,12 +264,8 @@ fn generate_cli_aware_loader(field: &dyn FieldGenerator) -> QuoteStream {
             };
         }
     } else {
-        // Non-CLI fields: use format-aware loader if format is specified
-        if let Some(format) = field.format_config() {
-            field.generate_format_loader(format)
-        } else {
-            field.generate_loader()
-        }
+        // Non-CLI fields: use profile-aware field loader
+        generate_field_loader(field, env_config)
     }
 }
 
