@@ -9,3 +9,8 @@ max-threads = 1
 # Tests in from_config_tests module share a temp file and env vars
 filter = "test(/from_config_tests/)"
 test-group = "serial-integration"
+
+[[profile.default.overrides]]
+# Malformed file tests share /tmp/procenv_malformed_tests/ directory
+filter = "binary(malformed_files)"
+test-group = "serial-integration"

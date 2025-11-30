@@ -6,6 +6,7 @@
 
 use procenv::EnvConfig;
 use serde::Deserialize;
+use serial_test::serial;
 use std::fs;
 
 const BASE_DIR: &str = "/tmp/procenv_malformed_tests";
@@ -51,6 +52,7 @@ struct MalformedTomlConfig {
 }
 
 #[test]
+#[serial]
 fn test_malformed_toml_syntax_error() {
     cleanup_env(&["MAL_TOML_NAME", "MAL_TOML_PORT"]);
     cleanup_file("malformed.toml");
@@ -72,6 +74,7 @@ fn test_malformed_toml_syntax_error() {
 }
 
 #[test]
+#[serial]
 fn test_malformed_toml_invalid_value_type() {
     cleanup_env(&["MAL_TOML_NAME", "MAL_TOML_PORT"]);
     cleanup_file("malformed.toml");
@@ -98,6 +101,7 @@ port = "not_a_number"
 }
 
 #[test]
+#[serial]
 fn test_malformed_toml_missing_required_key() {
     cleanup_env(&["MAL_TOML_NAME", "MAL_TOML_PORT"]);
     cleanup_file("malformed.toml");
@@ -134,6 +138,7 @@ struct MalformedJsonConfig {
 }
 
 #[test]
+#[serial]
 fn test_malformed_json_syntax_error() {
     cleanup_env(&["MAL_JSON_NAME", "MAL_JSON_COUNT"]);
     cleanup_file("malformed.json");
@@ -152,6 +157,7 @@ fn test_malformed_json_syntax_error() {
 }
 
 #[test]
+#[serial]
 fn test_malformed_json_trailing_comma() {
     cleanup_env(&["MAL_JSON_NAME", "MAL_JSON_COUNT"]);
     cleanup_file("malformed.json");
@@ -171,6 +177,7 @@ fn test_malformed_json_trailing_comma() {
 }
 
 #[test]
+#[serial]
 fn test_malformed_json_wrong_type() {
     cleanup_env(&["MAL_JSON_NAME", "MAL_JSON_COUNT"]);
     cleanup_file("malformed.json");
@@ -186,6 +193,7 @@ fn test_malformed_json_wrong_type() {
 }
 
 #[test]
+#[serial]
 fn test_malformed_json_null_value() {
     cleanup_env(&["MAL_JSON_NAME", "MAL_JSON_COUNT"]);
     cleanup_file("malformed.json");
@@ -222,6 +230,7 @@ struct MalformedYamlConfig {
 }
 
 #[test]
+#[serial]
 fn test_malformed_yaml_bad_indentation() {
     cleanup_env(&["MAL_YAML_NAME", "MAL_YAML_ENABLED"]);
     cleanup_file("malformed.yaml");
@@ -243,6 +252,7 @@ name: test
 }
 
 #[test]
+#[serial]
 fn test_malformed_yaml_tabs_instead_of_spaces() {
     cleanup_env(&["MAL_YAML_NAME", "MAL_YAML_ENABLED"]);
     cleanup_file("malformed.yaml");
@@ -261,6 +271,7 @@ fn test_malformed_yaml_tabs_instead_of_spaces() {
 }
 
 #[test]
+#[serial]
 fn test_malformed_yaml_wrong_type() {
     cleanup_env(&["MAL_YAML_NAME", "MAL_YAML_ENABLED"]);
     cleanup_file("malformed.yaml");
@@ -287,6 +298,7 @@ enabled: "not_a_bool"
 // ============================================================================
 
 #[test]
+#[serial]
 fn test_empty_toml_file() {
     cleanup_env(&["MAL_TOML_NAME", "MAL_TOML_PORT"]);
     cleanup_file("malformed.toml");
@@ -304,6 +316,7 @@ fn test_empty_toml_file() {
 }
 
 #[test]
+#[serial]
 fn test_whitespace_only_json() {
     cleanup_env(&["MAL_JSON_NAME", "MAL_JSON_COUNT"]);
     cleanup_file("malformed.json");
@@ -321,6 +334,7 @@ fn test_whitespace_only_json() {
 }
 
 #[test]
+#[serial]
 fn test_comments_only_yaml() {
     cleanup_env(&["MAL_YAML_NAME", "MAL_YAML_ENABLED"]);
     cleanup_file("malformed.yaml");
@@ -347,6 +361,7 @@ fn test_comments_only_yaml() {
 // ============================================================================
 
 #[test]
+#[serial]
 fn test_toml_with_extra_fields() {
     cleanup_env(&["MAL_TOML_NAME", "MAL_TOML_PORT"]);
     cleanup_file("malformed.toml");
@@ -372,6 +387,7 @@ another_unknown = 123
 }
 
 #[test]
+#[serial]
 fn test_json_with_nested_unknown() {
     cleanup_env(&["MAL_JSON_NAME", "MAL_JSON_COUNT"]);
     cleanup_file("malformed.json");
