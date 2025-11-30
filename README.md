@@ -646,21 +646,61 @@ The project includes comprehensive testing beyond unit/integration tests:
 
 ### Property-Based Testing (proptest)
 
-35 property tests verify critical invariants:
-- Type inference determinism and roundtrip correctness
-- Secret values never exposed in errors or debug output
-- Numeric overflow detection
-- Unicode string handling
+35 property tests verify critical invariants using randomized inputs:
+
+| Category | Tests | What's Verified |
+| -------- | ----- | --------------- |
+| Type inference | 8 | Determinism, roundtrip correctness, edge cases |
+| Secret handling | 6 | Values never exposed in errors, Debug, or Display |
+| Numeric safety | 7 | Overflow detection, boundary conditions |
+| String handling | 6 | Unicode, empty strings, whitespace |
+| Conversions | 8 | Type coercion consistency, parse stability |
+
+```bash
+# Run property tests
+cargo test --all-features --test property_tests
+
+# Run with more cases (slower but more thorough)
+PROPTEST_CASES=1000 cargo test --all-features --test property_tests
+```
+
+**Key invariants tested:**
+- `ConfigValue::from_str_infer()` is deterministic (same input → same output)
+- Secret values with `MaybeRedacted::Redacted` cannot be extracted
+- Numeric conversions return `None` on overflow (never panic)
+- Any valid UTF-8 string can be stored and retrieved
 
 ### Fuzz Testing (cargo-fuzz)
 
-6 fuzz targets for finding edge cases:
-- `fuzz_config_value` - ConfigValue parsing and conversions
-- `fuzz_maybe_redacted` - Secret redaction invariants
-- `fuzz_json_parsing` - JSON deserialization safety
-- `fuzz_toml_parsing` - TOML parsing robustness
-- `fuzz_yaml_parsing` - YAML parsing edge cases
-- `fuzz_file_utils` - FileUtils coercion and merging
+6 fuzz targets for finding edge cases with coverage-guided fuzzing:
+
+| Target | Purpose | Key Invariants |
+| ------ | ------- | -------------- |
+| `fuzz_config_value` | ConfigValue parsing | No panics, type inference consistency |
+| `fuzz_maybe_redacted` | Secret redaction | Secrets never exposed in any output |
+| `fuzz_json_parsing` | JSON safety | Graceful error handling, no crashes |
+| `fuzz_toml_parsing` | TOML robustness | Deep merge consistency, coercion safety |
+| `fuzz_yaml_parsing` | YAML edge cases | Parser error recovery |
+| `fuzz_file_utils` | Utility functions | insert_nested/deep_merge correctness |
+
+```bash
+# Run a fuzz target (requires nightly)
+cargo +nightly fuzz run fuzz_config_value -- -max_total_time=60
+
+# Run all fuzz targets for 60 seconds each
+for target in fuzz_config_value fuzz_maybe_redacted fuzz_toml_parsing \
+              fuzz_json_parsing fuzz_yaml_parsing fuzz_file_utils; do
+    cargo +nightly fuzz run $target -- -max_total_time=60
+done
+
+# Run with more parallelism
+cargo +nightly fuzz run fuzz_config_value -- -max_total_time=300 -jobs=4
+```
+
+**Fuzz testing has found:**
+- Edge cases in TOML/YAML coercion with unusual numeric formats
+- Unicode boundary issues in error message truncation
+- Deep nesting limits in configuration merging
 
 ## Project Structure
 
