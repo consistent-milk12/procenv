@@ -24,6 +24,9 @@ serde = ["dep:serde", "dep:serde_json"]
 # Enable tracing instrumentation
 tracing = ["dep:tracing"]
 
+async = ["provider", "dep:tokio", "dep:futures"]
+provider = []
+
 # File format support (Phase 13)
 # Enable file-based configuration loading
 file = ["dep:serde", "dep:serde_json", "dep:serde_path_to_error"]
@@ -45,6 +48,7 @@ full = [
 	"serde",
 	"tracing",
 	"file-all",
+	"provider",
 ]
 
 [dependencies]
@@ -55,18 +59,17 @@ thiserror = { workspace = true }
 secrecy = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 
-# Optional medium-complexity dependencies
 dotenvy = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 serde_path_to_error = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 
-# File format dependencies (Phase 13)
 toml = { workspace = true, optional = true }
 serde-saphyr = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
 
-# Validation
 validator = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -81,3 +84,11 @@ clap = { workspace = true }
 [[example]]
 name = "file_config"
 required-features = ["file-all"]
+
+[[example]]
+name = "validator_example"
+required-features = ["validator"]
+
+[[example]]
+name = "custom_provider"
+required-features = ["provider"]

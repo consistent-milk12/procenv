@@ -37,7 +37,7 @@
 //!          ▼
 //! ┌─────────────────┐
 //! │ FieldGenerator  │  Trait object for code generation
-//! │  implementations │
+//! │  implementations│
 //! └────────┬────────┘
 //!          │
 //!          ├─────────────────────────────────────┐

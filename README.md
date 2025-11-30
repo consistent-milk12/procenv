@@ -87,20 +87,22 @@ procenv = { path = "path/to/procenv", features = ["validator"] }
 
 ### Feature Flags
 
-| Feature     | Default | Description                                   |
-| ----------- | ------- | --------------------------------------------- |
-| `dotenv`    | **Yes** | Load `.env` files automatically               |
-| `secrecy`   | **Yes** | `SecretString` support for sensitive data     |
-| `clap`      | **Yes** | CLI argument integration                      |
-| `file`      | **Yes** | File configuration (enables JSON)             |
-| `toml`      | **Yes** | TOML file support                             |
-| `yaml`      | **Yes** | YAML file support                             |
-| `json`      | **Yes** | JSON file support (included in `file`)        |
-| `file-all`  | **Yes** | Meta-feature: enables `toml` + `yaml` + `json`|
-| `validator` | No      | Validation integration with `validator` crate |
+| Feature     | Default | Description                                     |
+| ----------- | ------- | ----------------------------------------------- |
+| `dotenv`    | **Yes** | Load `.env` files automatically                 |
+| `secrecy`   | **Yes** | `SecretString` support for sensitive data       |
+| `clap`      | **Yes** | CLI argument integration                        |
+| `file`      | **Yes** | File configuration (enables JSON)               |
+| `toml`      | **Yes** | TOML file support                               |
+| `yaml`      | **Yes** | YAML file support                               |
+| `json`      | **Yes** | JSON file support (included in `file`)          |
+| `file-all`  | **Yes** | Meta-feature: enables `toml` + `yaml` + `json`  |
+| `validator` | No      | Validation integration with `validator` crate   |
 | `serde`     | No      | Standalone serde support (without file loading) |
-| `tracing`   | No      | Tracing instrumentation                       |
-| `full`      | No      | Enable all features                           |
+| `tracing`   | No      | Tracing instrumentation                         |
+| `provider`  | No      | Provider trait and ConfigLoader                 |
+| `async`     | No      | Async provider support (requires `provider`)    |
+| `full`      | No      | Enable all features                             |
 
 ## Attribute Reference
 
@@ -335,6 +337,48 @@ Error: field `admin_email` failed validation: email
   help: must be a valid email address
 ```
 
+## Custom Providers
+
+Create custom configuration sources for services like Vault or AWS SSM:
+
+```rust
+use procenv::ConfigLoader;
+use procenv::provider::{Provider, ProviderResult, ProviderSource, ProviderValue};
+use std::collections::HashMap;
+
+struct VaultProvider {
+    secrets: HashMap<String, String>,
+}
+
+impl Provider for VaultProvider {
+    fn name(&self) -> &str { "vault" }
+
+    fn get(&self, key: &str) -> ProviderResult<ProviderValue> {
+        match self.secrets.get(key) {
+            Some(value) => Ok(Some(ProviderValue {
+                value: value.clone(),
+                source: ProviderSource::custom("vault", Some(format!("secret/app/{}", key))),
+                secret: true,  // Mark as sensitive
+            })),
+            None => Ok(None),  // Key not found, try next provider
+        }
+    }
+
+    fn priority(&self) -> u32 { 40 }  // Between env (20) and file (50)
+}
+
+// Chain providers with ConfigLoader
+let mut loader = ConfigLoader::new()
+    .with_env()
+    .with_provider(Box::new(VaultProvider::new()));
+
+if let Some(value) = loader.get("database_password") {
+    println!("Source: {}", value.source);  // "vault (secret/app/database_password)"
+}
+```
+
+Run the example: `cargo run --example custom_provider --features provider`
+
 ## Generated Methods
 
 | Method                              | Description                                                                |
@@ -360,13 +404,12 @@ Error: field `admin_email` failed validation: email
 | Validation integration  | **Yes**      | No         | No         | No     |
 | Compile-time derive     | Yes          | No         | No         | Yes    |
 | File configs            | Yes          | Yes        | Yes        | No     |
-| Custom providers        | No           | Yes        | Yes        | No     |
+| Custom providers        | **Yes**      | Yes        | Yes        | No     |
 | Runtime value access    | No           | Yes        | Yes        | No     |
 | Hot reload              | No           | No         | Partial    | No     |
 
 ## Known Limitations
 
-- **No extensibility** - Can't add custom providers (Vault, SSM, Consul)
 - **All-or-nothing loading** - No runtime access to individual config values
 - **No hot reload** - Can't watch for config file changes
 - **Zero production usage** - Untested in real-world applications
@@ -404,10 +447,10 @@ procenv/
 - Source attribution for all loading methods
 - Secret masking in errors and Debug
 - Validation integration with `validator` crate
+- Provider extensibility (custom sources like Vault, SSM)
 
 **Planned (see [PROGRESS.md](PROGRESS.md)):**
 
-- Phase C: Provider extensibility
 - Phase D: Runtime value access
 - Phase E: Hot reload
 - Phase F: Documentation & examples

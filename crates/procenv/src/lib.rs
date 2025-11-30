@@ -122,6 +122,21 @@ pub mod file;
 #[cfg(feature = "file")]
 pub use file::{ConfigBuilder, FileFormat, FileUtils, OriginTracker};
 
+// Provider extensibility (Phase C)
+pub mod loader;
+pub mod provider;
+#[cfg(feature = "dotenv")]
+pub use provider::DotenvProvider;
+#[cfg(feature = "file")]
+pub use provider::FileProvider;
+#[cfg(feature = "async")]
+pub use provider::{AsyncProvider, BlockingAdapter, BoxFuture};
+pub use provider::{
+    EnvProvider, Provider, ProviderError, ProviderResult, ProviderSource, ProviderValue,
+};
+
+pub use loader::ConfigLoader;
+
 use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
 use std::{error::Error as StdError, fmt::Debug};
@@ -273,6 +288,20 @@ pub enum Error {
         help: String,
     },
 
+    /// An error occured in a configuration provider.
+    #[diagnostic(code(procenv::provider_error))]
+    Provider {
+        /// The provider that failed.
+        provider: String,
+
+        /// Error message.
+        message: String,
+
+        /// Help text.
+        #[help]
+        help: String,
+    },
+
     /// A validation error occurred after loading configuration.
     ///
     /// This variant wraps errors from the `validator` crate and provides
@@ -346,6 +375,12 @@ impl Display for Error {
                 write!(f, "invalid profile '{}' for {}", profile, var)
             }
 
+            Error::Provider {
+                provider, message, ..
+            } => {
+                write!(f, "error connecting to {provider}: {message}")
+            }
+
             #[cfg(feature = "validator")]
             Error::Validation { errors } => {
                 write!(f, "{} validation error(s) occurred", errors.len())
@@ -408,6 +443,17 @@ impl Debug for Error {
                 .field("profile", profile)
                 .field("var", var)
                 .field("valid_profiles", valid_profiles)
+                .field("help", help)
+                .finish(),
+
+            Error::Provider {
+                provider,
+                message,
+                help,
+            } => f
+                .debug_struct("Provider")
+                .field("provider", provider)
+                .field("message", message)
                 .field("help", help)
                 .finish(),
 
@@ -695,6 +741,11 @@ pub enum Source {
     /// This only applies to fields marked with `optional` that have
     /// no value from any source. The field value will be `None`.
     NotSet,
+
+    /// Value came from a custom provider.
+    ///
+    /// The string contains the provider name (e.g., "valut", "aws-ssm").
+    CustomProvider(String),
 }
 
 impl Display for Source {
@@ -717,6 +768,8 @@ impl Display for Source {
             Source::Default => write!(f, "Default value"),
 
             Source::NotSet => write!(f, "Not set"),
+
+            Source::CustomProvider(name) => write!(f, "Custom provider ({name})"),
         }
     }
 }
@@ -1112,5 +1165,13 @@ mod tests {
     fn test_error_multiple_empty_returns_none() {
         let result = Error::multiple(vec![]);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_source_custom_provider() {
+        let s1 = Source::CustomProvider("vault".to_string());
+        let s2 = Source::CustomProvider("vault".to_string());
+        assert_eq!(s1, s2);
+        assert_eq!(s1.to_string(), "Custom provider (vault)");
     }
 }
