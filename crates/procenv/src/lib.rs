@@ -7,6 +7,15 @@
 //! secret masking, and support for multiple configuration sources including `.env` files,
 //! config files (TOML/JSON/YAML), CLI arguments, and environment variable profiles.
 //!
+//! ## What Makes procenv Unique
+//!
+//! Unlike other configuration crates, procenv:
+//!
+//! - **Accumulates all errors** - Shows every configuration problem at once, not one at a time
+//! - **Provides source spans** - File config errors point to the exact line/column
+//! - **Masks secrets structurally** - Secret values are never stored in error messages
+//! - **Integrates CLI arguments** - Generate clap arguments from the same struct
+//!
 //! ## Features
 //!
 //! - **Type-safe parsing** - Automatic conversion using `FromStr` or serde deserialization
@@ -42,6 +51,28 @@
 //!     println!("Server running on port {}", config.port);
 //!     Ok(())
 //! }
+//! ```
+//!
+//! ## Error Output Example
+//!
+//! When multiple configuration errors occur, they're all reported together:
+//!
+//! ```text
+//! procenv::multiple_errors
+//!
+//!   × 3 configuration error(s) occurred
+//!
+//! Error: procenv::missing_var
+//!   × missing required environment variable: DATABASE_URL
+//!   help: set DATABASE_URL in your environment or .env file
+//!
+//! Error: procenv::parse_error
+//!   × failed to parse PORT: expected u16, got "not_a_number"
+//!   help: expected a valid u16
+//!
+//! Error: procenv::missing_var
+//!   × missing required environment variable: SECRET
+//!   help: set SECRET in your environment or .env file
 //! ```
 //!
 //! ## Field Attributes

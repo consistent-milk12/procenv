@@ -97,11 +97,11 @@ impl OriginTracker {
 
     /// Record origins for all paths in a value, attributing to the most recent source.
     pub(crate) fn track_value(&mut self, value: &SJSON::Value, prefix: &str) {
-        if self.sources.is_empty() {
+        // Get the most recent source, or return early if none
+        let Some(source) = self.sources.last().cloned() else {
             return;
-        }
+        };
 
-        let source = self.sources.last().unwrap().clone();
         self.track_value_recursive(value, prefix, &source);
     }
 

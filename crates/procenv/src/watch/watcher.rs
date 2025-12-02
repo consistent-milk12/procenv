@@ -19,6 +19,7 @@ use crate::{ConfigSources, Error};
 
 /// Commands sent to the watcher thread.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum WatchCommand {
     /// Request a manual reload.
     Reload,

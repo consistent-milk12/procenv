@@ -93,6 +93,7 @@ macro_rules! impl_to_primitive {
 /// | `List` | `Vec<ConfigValue>` |
 /// | `Map` | `HashMap<String, ConfigValue>` |
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum ConfigValue {
     /// A string value.
     String(String),
@@ -469,7 +470,10 @@ impl Display for ConfigValue {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}: {}", k, m.get(*k).unwrap())?;
+                    // SAFETY: We're iterating over keys from this map, so get() is guaranteed Some
+                    if let Some(v) = m.get(*k) {
+                        write!(f, "{k}: {v}")?;
+                    }
                 }
                 write!(f, "}}")
             }

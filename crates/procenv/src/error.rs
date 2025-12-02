@@ -88,6 +88,7 @@ use crate::validation::ValidationFieldError;
 /// assert!(secret.is_redacted());
 /// ```
 #[derive(Clone)]
+#[non_exhaustive]
 pub enum MaybeRedacted {
     /// The actual value (for non-secret fields).
     Plain(String),
@@ -189,6 +190,7 @@ impl Display for MaybeRedacted {
 /// | `procenv::multiple_errors` | Multiple configuration errors occurred |
 /// | `procenv::invalid_profile` | Invalid profile name specified |
 #[derive(Diagnostic)]
+#[non_exhaustive]
 pub enum Error {
     /// A required environment variable was not set.
     #[diagnostic(

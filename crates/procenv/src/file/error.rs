@@ -27,6 +27,7 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 ///   help: check for missing quotes, invalid values, or syntax errors
 /// ```
 #[derive(Debug, Diagnostic, thiserror::Error)]
+#[non_exhaustive]
 pub enum FileError {
     /// Configuration file not found
     #[error("configuration file not found: {path}")]

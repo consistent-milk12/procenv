@@ -40,6 +40,7 @@ use std::path::PathBuf;
 /// }
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum Source {
     /// Value was provided via a CLI argument (e.g., `--port 8080`).
     ///

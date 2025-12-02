@@ -19,6 +19,7 @@ use crate::{ConfigSources, Source};
 /// All watch-related errors are reported through this type, which integrates
 /// with [`miette`] for rich terminal diagnostics.
 #[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum WatchError {
     /// Failed to initialize the file watcher.
     #[error("failed to initialize file watcher: {message}")]
@@ -214,6 +215,7 @@ impl<T> ConfigChange<T> {
 
 /// What triggered a configuration reload.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ChangeTrigger {
     /// A watched file was modified.
     FileModified(PathBuf),

@@ -158,6 +158,7 @@ impl ProviderValue {
 /// This enum wraps the built-in [`Source`] types and allows custom
 /// providers to define their own source attribution.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum ProviderSource {
     /// A built-in source type (environment, file, CLI, etc.).
     BuiltIn(Source),
@@ -245,6 +246,7 @@ impl Display for ProviderSource {
 
 /// Errors that can occur during provider operations.
 #[derive(Debug, ThisError, Diagnostic)]
+#[non_exhaustive]
 pub enum ProviderError {
     /// The requested key was not found in this provider.
     #[error("key '{key}' not found in provider '{provider}'")]

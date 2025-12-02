@@ -55,6 +55,7 @@ use std::path::Path;
 /// assert_eq!(FileFormat::from_path(Path::new("config.yaml")), Some(FileFormat::Yaml));
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum FileFormat {
     /// JSON format (`.json` extension).
     ///

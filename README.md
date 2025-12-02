@@ -21,15 +21,30 @@ Error: procenv::missing_var (https://docs.rs/procenv)
   × missing required environment variable: DATABASE_URL
   help: set DATABASE_URL in your environment or .env file
 
-Error: procenv::missing_var (https://docs.rs/procenv)
-
-  × missing required environment variable: API_KEY
-  help: set API_KEY in your environment or .env file
-
-Error: procenv::parse_error (https://docs.rs/procenv)
+Error: procenv::parse_error
 
   × failed to parse PORT: expected u16, got "not_a_number"
+  ╰─▶ invalid digit found in string
   help: expected a valid u16
+
+Error: procenv::missing_var (https://docs.rs/procenv)
+
+  × missing required environment variable: SECRET
+  help: set SECRET in your environment or .env file
+```
+
+**File configs get source spans** pointing to the exact line:
+
+```
+  × configuration file error: type mismatch at `port` in config.toml
+   ╭─[config.toml:2:8]
+ 1 │ name = "myapp"
+ 2 │ port = "not_a_number"
+   ·        ───────┬──────
+   ·               ╰── invalid type: string "not_a_number", expected u16
+ 3 │ debug = true
+   ╰────
+  help: check that the value matches the expected type
 ```
 
 This is a learning project exploring what's possible when you combine proc-macros with modern error handling.
@@ -581,19 +596,21 @@ Run the example: `cargo run --example hot_reload --features watch`
 
 ## Comparison with Established Crates
 
+> **Note:** figment and config-rs are battle-tested with millions of downloads. procenv is experimental with zero production usage. Choose established crates for production workloads.
+
 | Feature                 | procenv      | figment    | config-rs  | envy   |
 | ----------------------- | ------------ | ---------- | ---------- | ------ |
 | **Maturity**            | Experimental | Production | Production | Stable |
-| Error accumulation      | **Yes**      | No         | No         | No     |
-| miette diagnostics      | **Yes**      | No         | No         | No     |
-| .env.example generation | **Yes**      | No         | No         | No     |
-| CLI integration         | **Yes**      | No         | No         | No     |
-| Validation integration  | **Yes**      | No         | No         | No     |
+| Error accumulation      | Yes          | No         | No         | No     |
+| miette diagnostics      | Yes          | No         | No         | No     |
+| .env.example generation | Yes          | No         | No         | No     |
+| CLI integration         | Yes          | No         | No         | No     |
+| Validation integration  | Yes          | No         | No         | No     |
 | Compile-time derive     | Yes          | No         | No         | Yes    |
 | File configs            | Yes          | Yes        | Yes        | No     |
-| Custom providers        | **Yes**      | Yes        | Yes        | No     |
-| Runtime value access    | **Yes**      | Yes        | Yes        | No     |
-| Hot reload              | **Yes**      | No         | Partial    | No     |
+| Custom providers        | Yes          | Yes        | Yes        | No     |
+| Runtime value access    | Yes          | Yes        | Yes        | No     |
+| Hot reload              | Yes          | No         | Partial    | No     |
 
 ## Performance
 
@@ -647,7 +664,7 @@ Run benchmarks: `cargo bench --bench config_loading`
 ## Known Limitations
 
 - **Zero production usage** - Untested in real-world applications
-- **Minimal documentation** - No cookbook, migration guides, or comprehensive examples
+- **No migration guides** - No cookbook or guides for migrating from other crates
 
 ## Testing Infrastructure
 
@@ -727,6 +744,7 @@ procenv/
 │   │   │   ├── file/         # File configuration support
 │   │   │   ├── provider/     # Provider extensibility framework
 │   │   │   └── watch/        # Hot reload with file watching
+│   │   ├── data/             # Example config files (TOML/JSON/YAML)
 │   │   ├── examples/
 │   │   └── tests/
 │   └── procenv_macro/        # Proc-macro implementation
@@ -768,7 +786,14 @@ procenv/
 
 **In Progress:**
 
-- Phase I: Production hardening (fuzz testing, property testing, audit)
+- Phase I: Production hardening (v0.1.10)
+  - ✅ Fuzz testing (6 targets)
+  - ✅ Property testing (35 tests)
+  - ✅ Benchmark suite
+  - ✅ Clippy pedantic compliance
+  - ✅ Removed `unwrap()` from library code
+  - ✅ Added `#[non_exhaustive]` to all public enums
+  - 🔲 Security audit, real-world testing
 
 **Planned (see [PROGRESS.md](PROGRESS.md)):**
 
@@ -782,7 +807,7 @@ procenv/
 # Default features (dotenv only) - 186 tests
 cargo nextest run
 
-# All features - 335 tests (including property tests)
+# All features - 345 tests (including property tests)
 cargo nextest run --all-features
 
 # Property tests only
@@ -797,6 +822,7 @@ cargo +nightly fuzz run fuzz_toml_parsing -- -max_total_time=60
 cargo run --example basic
 cargo run --example source_attribution
 cargo run --example file_config --features file-all
+cargo run --example complex_flatten --features file-all
 cargo run --example hot_reload --features watch
 ```
 

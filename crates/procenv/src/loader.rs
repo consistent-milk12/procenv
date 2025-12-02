@@ -313,20 +313,18 @@ impl ConfigLoader {
     ///
     /// Returns any accumulated errors from the loading process.
     ///
-    /// # Panics
-    ///
-    /// This function will not panic. The `unwrap()` is safe because we check
-    /// that the errors vector has exactly one element before calling it.
     #[allow(clippy::result_large_err)]
     pub fn finish(self) -> Result<ConfigSources, Error> {
-        if self.errors.is_empty() {
-            Ok(self.sources)
-        } else if self.errors.len() == 1 {
-            Err(self.errors.into_iter().next().unwrap())
-        } else {
-            Err(Error::Multiple {
+        match self.errors.len() {
+            0 => Ok(self.sources),
+            1 => {
+                // SAFETY: We just checked len() == 1, so into_iter().next() is guaranteed Some
+                let err = self.errors.into_iter().next();
+                Err(err.expect("len == 1 guarantees at least one element"))
+            }
+            _ => Err(Error::Multiple {
                 errors: self.errors,
-            })
+            }),
         }
     }
 
