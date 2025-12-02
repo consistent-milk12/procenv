@@ -1,0 +1,9 @@
+# YAML configuration example
+name: app-from-yaml
+port: 8082
+debug: false
+
+database:
+  host: yaml-db-host
+  port: 5434
+  name: yaml_db

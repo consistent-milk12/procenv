@@ -1,0 +1,10 @@
+{
+  "name": "app-from-json",
+  "port": 8081,
+  "debug": true,
+  "database": {
+    "host": "json-db-host",
+    "port": 5433,
+    "name": "json_db"
+  }
+}

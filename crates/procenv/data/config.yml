@@ -1,0 +1,9 @@
+# YML configuration example (alternate extension)
+name: app-from-yml
+port: 8083
+debug: true
+
+database:
+  host: yml-db-host
+  port: 5435
+  name: yml_db

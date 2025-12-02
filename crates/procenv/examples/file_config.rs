@@ -170,6 +170,45 @@ fn main() {
         }
     }
 
+    // Method 4: Test all file formats
+    println!("\n4. Testing all file formats:\n");
+
+    // JSON
+    let config: Result<AppConfig, _> = ConfigBuilder::new()
+        .file_optional("crates/procenv/data/config.json")
+        .build();
+
+    match config {
+        Ok(config) => {
+            println!("   JSON:  name={}, port={}, db_host={}", config.name, config.port, config.database.host);
+        }
+        Err(e) => eprintln!("   JSON Error: {e}"),
+    }
+
+    // YAML
+    let config: Result<AppConfig, _> = ConfigBuilder::new()
+        .file_optional("crates/procenv/data/config.yaml")
+        .build();
+
+    match config {
+        Ok(config) => {
+            println!("   YAML: name={}, port={}, db_host={}", config.name, config.port, config.database.host);
+        }
+        Err(e) => eprintln!("   YAML Error: {e}"),
+    }
+
+    // YML
+    let config: Result<AppConfig, _> = ConfigBuilder::new()
+        .file_optional("crates/procenv/data/config.yml")
+        .build();
+
+    match config {
+        Ok(config) => {
+            println!("   YML:  name={}, port={}, db_host={}", config.name, config.port, config.database.host);
+        }
+        Err(e) => eprintln!("   YML Error: {e}"),
+    }
+
     println!("\n=== Priority Order ===");
     println!("1. Defaults (lowest)");
     println!("2. Config files (in order added)");
