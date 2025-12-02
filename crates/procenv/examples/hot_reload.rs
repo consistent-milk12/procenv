@@ -81,12 +81,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })?;
 
             let value: toml::Value =
-                content
-                    .parse()
-                    .map_err(|e: toml::de::Error| procenv::Error::Missing {
-                        var: "config".to_string(),
-                        help: format!("Invalid TOML: {e}"),
-                    })?;
+                toml::from_str(&content).map_err(|e: toml::de::Error| procenv::Error::Missing {
+                    var: "config".to_string(),
+                    help: format!("Invalid TOML: {e}"),
+                })?;
 
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let port = value
