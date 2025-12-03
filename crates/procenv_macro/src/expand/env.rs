@@ -150,8 +150,17 @@ pub fn generate_profile_setup(env_config_attr: &EnvConfigAttr) -> QuoteStream {
     };
 
     quote! {
-        // Read profile from environment variable
-        let __profile: std::option::Option<std::string::String> = std::env::var(#profile_env).ok();
+        // Read profile from environment variable, reporting UTF-8 errors
+        let __profile: std::option::Option<std::string::String> = match std::env::var(#profile_env) {
+            std::result::Result::Ok(val) => std::option::Option::Some(val),
+            std::result::Result::Err(std::env::VarError::NotPresent) => std::option::Option::None,
+            std::result::Result::Err(std::env::VarError::NotUnicode(_)) => {
+                __errors.push(::procenv::Error::InvalidUtf8 {
+                    var: #profile_env.to_string()
+                });
+                std::option::Option::None
+            }
+        };
         #validation
     }
 }
@@ -221,7 +230,8 @@ pub fn generate_field_loader(
     };
 
     // Generate error or None handling for missing value
-    let missing_value_handling = if default_value.is_some() {
+    // Optional fields should return None without error, same as fields with defaults
+    let missing_value_handling = if default_value.is_some() || field.is_optional() {
         quote! { std::option::Option::None }
     } else {
         quote! {
@@ -439,26 +449,83 @@ fn generate_simple_source_tracking(field: &dyn FieldGenerator) -> QuoteStream {
         let source_ident = format_ident!("__{}_source", name);
         let effective_var_ident = format_ident!("__{}_effective_var", name);
         let has_default = field.default_value().is_some();
+        let has_profile = field.profile_config().is_some();
 
-        quote! {
-            // Build effective env var name with external prefix
-            let #effective_var_ident: std::string::String = match __external_prefix {
-                std::option::Option::Some(prefix) => format!("{}{}", prefix, #env_var),
-                std::option::Option::None => #env_var.to_string(),
-            };
+        // Build source determination with proper priority:
+        // Profile > Env/Dotenv > Default > NotSet
+        // Note: Tracking variables only exist when profile config is present
+        if has_profile {
+            let profile_used_ident = format_ident!("__{}_from_profile", name);
+            let used_default_ident = format_ident!("__{}_used_default", name);
 
-            let #source_ident = if std::env::var(&#effective_var_ident).is_ok() {
-                if __dotenv_loaded && !__pre_dotenv_vars.contains(&#effective_var_ident) {
-                    ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::DotenvFile(None))
-                } else {
-                    ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::Environment)
+            let default_check = if has_default {
+                quote! {
+                    else if #used_default_ident {
+                        ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::Default)
+                    }
                 }
-            } else if #has_default {
-                ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::Default)
             } else {
-                ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::NotSet)
+                quote! {}
             };
-            __sources.add(#name_str, #source_ident);
+
+            quote! {
+                // Build effective env var name with external prefix
+                let #effective_var_ident: std::string::String = match __external_prefix {
+                    std::option::Option::Some(prefix) => format!("{}{}", prefix, #env_var),
+                    std::option::Option::None => #env_var.to_string(),
+                };
+
+                let #source_ident = if #profile_used_ident {
+                    ::procenv::ValueSource::new(
+                        &#effective_var_ident,
+                        ::procenv::Source::Profile(__profile.clone().unwrap_or_default())
+                    )
+                } else if std::env::var(&#effective_var_ident).is_ok() {
+                    if __dotenv_loaded && !__pre_dotenv_vars.contains(&#effective_var_ident) {
+                        ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::DotenvFile(None))
+                    } else {
+                        ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::Environment)
+                    }
+                }
+                #default_check
+                else {
+                    ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::NotSet)
+                };
+                __sources.add(#name_str, #source_ident);
+            }
+        } else {
+            // No profile config - simpler tracking without profile variables
+            let default_check = if has_default {
+                quote! {
+                    else if #name.is_some() {
+                        // Value exists but not from env - must be from default
+                        ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::Default)
+                    }
+                }
+            } else {
+                quote! {}
+            };
+
+            quote! {
+                // Build effective env var name with external prefix
+                let #effective_var_ident: std::string::String = match __external_prefix {
+                    std::option::Option::Some(prefix) => format!("{}{}", prefix, #env_var),
+                    std::option::Option::None => #env_var.to_string(),
+                };
+
+                let #source_ident = if std::env::var(&#effective_var_ident).is_ok() {
+                    if __dotenv_loaded && !__pre_dotenv_vars.contains(&#effective_var_ident) {
+                        ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::DotenvFile(None))
+                    } else {
+                        ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::Environment)
+                    }
+                }
+                #default_check
+                else {
+                    ::procenv::ValueSource::new(&#effective_var_ident, ::procenv::Source::NotSet)
+                };
+                __sources.add(#name_str, #source_ident);
+            }
         }
     } else {
         quote! {}
@@ -538,7 +605,8 @@ fn generate_field_loader_with_prefix(field: &dyn FieldGenerator) -> QuoteStream 
     };
 
     // Generate error or None handling for missing value
-    let missing_value_handling = if default_value.is_some() {
+    // Optional fields should return None without error, same as fields with defaults
+    let missing_value_handling = if default_value.is_some() || field.is_optional() {
         quote! { std::option::Option::None }
     } else {
         quote! {
@@ -617,8 +685,11 @@ fn generate_format_loader_with_prefix(field: &dyn FieldGenerator, format: &str) 
     let name = field.name();
     let env_var = field.env_var_name().unwrap_or("");
     let secret = field.is_secret();
+    let is_optional = field.is_optional();
+    let default_value = field.default_value();
     let effective_var_ident = format_ident!("__{}_effective_var", name);
     let profile_used_ident = format_ident!("__{}_from_profile", name);
+    let used_default_ident = format_ident!("__{}_used_default", name);
 
     let deserialize_call = match format {
         "json" => quote! { ::serde_json::from_str(&val) },
@@ -628,6 +699,47 @@ fn generate_format_loader_with_prefix(field: &dyn FieldGenerator, format: &str) 
     };
 
     let format_name = format.to_uppercase();
+
+    // Generate deserialize call for default value (uses `val` variable)
+    let default_deserialize_call = match format {
+        "json" => quote! { ::serde_json::from_str(&val) },
+        "toml" => quote! { ::toml::from_str(&val) },
+        "yaml" => quote! { ::serde_saphyr::from_str(&val) },
+        _ => unreachable!("Format validated at parse time"),
+    };
+
+    // Generate handling for missing env var based on field configuration
+    let missing_handling = if let Some(default) = default_value {
+        // Has default: use it (deserialize the default string)
+        quote! {
+            {
+                #used_default_ident = true;
+                let val = #default.to_string();
+                match #default_deserialize_call {
+                    std::result::Result::Ok(v) => std::option::Option::Some(v),
+                    std::result::Result::Err(e) => {
+                        __errors.push(::procenv::Error::parse(
+                            &#effective_var_ident,
+                            val,
+                            #secret,
+                            concat!(#format_name, " data"),
+                            std::boxed::Box::new(e),
+                        ));
+                        std::option::Option::None
+                    }
+                }
+            }
+        }
+    } else if is_optional {
+        // Optional without default: return None, no error
+        quote! { std::option::Option::None }
+    } else {
+        // Required without default: push error
+        quote! {
+            __errors.push(::procenv::Error::missing(&#effective_var_ident));
+            std::option::Option::None
+        }
+    };
 
     quote! {
         // Build effective env var name with external prefix
@@ -639,6 +751,7 @@ fn generate_format_loader_with_prefix(field: &dyn FieldGenerator, format: &str) 
 
         // No profile for format-only fields in this path
         let #profile_used_ident: bool = false;
+        let mut #used_default_ident: bool = false;
 
         let #name = match std::env::var(&#effective_var_ident) {
             std::result::Result::Ok(val) => {
@@ -659,15 +772,15 @@ fn generate_format_loader_with_prefix(field: &dyn FieldGenerator, format: &str) 
             std::result::Result::Err(e) => {
                 match e {
                     std::env::VarError::NotPresent => {
-                        __errors.push(::procenv::Error::missing(&#effective_var_ident));
+                        #missing_handling
                     }
                     std::env::VarError::NotUnicode(_) => {
                         __errors.push(::procenv::Error::InvalidUtf8 {
                             var: #effective_var_ident.clone(),
                         });
+                        std::option::Option::None
                     }
                 }
-                std::option::Option::None
             }
         };
     }
