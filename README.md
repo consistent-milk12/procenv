@@ -55,6 +55,7 @@ This is a learning project exploring what's possible when you combine proc-macro
 | ---------------------------- | ---------------------------------------------------------------------- |
 | **Error Accumulation**       | Shows ALL config errors at once—no more fix-one-run-again cycles       |
 | **miette Diagnostics**       | Error codes, help text, and source spans in file configs               |
+| **Serde-Free File Loading**  | Load TOML/JSON/YAML without adding serde to your dependencies          |
 | **Built-in CLI Integration** | Generates clap arguments from attributes                               |
 | **.env.example Generation**  | Auto-generate documentation for your config                            |
 | **Secret Masking**           | Two-tier protection: structural prevention in errors + runtime masking |
@@ -97,15 +98,49 @@ fn main() -> Result<(), procenv::Error> {
 # Default: just dotenv support (lightweight)
 procenv = "0.1"
 
+# File configs (TOML/JSON/YAML) - NO serde needed on your structs!
+procenv = { version = "0.1", features = ["file-all"] }
+
 # Common setup: env + files + CLI
 procenv = { version = "0.1", features = ["file-all", "clap"] }
 
-# Full features (everything)
-procenv = { version = "0.1", features = ["full"] }
-
 # With validation support
 procenv = { version = "0.1", features = ["validator"] }
+
+# Full features (everything)
+procenv = { version = "0.1", features = ["full"] }
 ```
+
+### What Does EnvConfig Generate?
+
+`#[derive(EnvConfig)]` automatically provides:
+
+| Generated       | Description                                                                       |
+| --------------- | --------------------------------------------------------------------------------- |
+| `Debug` impl    | **Secure** - automatically redacts fields marked `secret` or using `SecretString` |
+| `from_env()`    | Load from environment variables                                                   |
+| `from_config()` | Load from files + env (requires `file` feature)                                   |
+| `from_args()`   | Load from CLI + env (requires `clap` feature)                                     |
+| `env_example()` | Generate `.env.example` documentation                                             |
+
+> **Note:** Don't add `#[derive(Debug)]` - EnvConfig generates a security-aware Debug impl that redacts secrets. Adding your own Debug derive will conflict.
+
+### Do I Need Serde?
+
+**Short answer: Usually no!** procenv generates serde-free extraction code for file configs.
+
+| Use Case                                    | Need `serde` dep?   | Need `Deserialize` derive? |
+| ------------------------------------------- | ------------------- | -------------------------- |
+| `from_env()` - environment variables only   | No                  | No                         |
+| `from_config()` - file + env loading        | No                  | No                         |
+| `from_args()` - CLI + env                   | No                  | No                         |
+| `#[env(format = "json")]` - complex types   | Yes (auto-included) | Yes, on the field type     |
+| `ConfigBuilder` API - advanced file loading | Yes (auto-included) | Yes                        |
+
+**When you DO need serde:**
+
+- Using `#[env(format = "json/yaml/toml")]` for complex nested types like `Vec<T>` or custom structs
+- Using the low-level `ConfigBuilder` API directly for advanced scenarios (multiple config files, programmatic defaults)
 
 ### Feature Flags
 
@@ -116,13 +151,13 @@ Default features: `dotenv` only (lightweight by default)
 | `dotenv`      | **Yes** | Load `.env` files automatically                                                        |
 | `secrecy`     | No      | `SecretString` for runtime secret protection (see [Secret Handling](#secret-handling)) |
 | `clap`        | No      | CLI argument integration                                                               |
-| `file-all`    | No      | Meta-feature: enables `toml` + `yaml` + `json`                                         |
+| `file-all`    | No      | Meta-feature: enables `toml` + `yaml` + `json` (serde-free!)                           |
 | `file`        | No      | Base file config (JSON); enabled by format features                                    |
 | `toml`        | No      | TOML file support (implies `file`)                                                     |
 | `yaml`        | No      | YAML file support (implies `file`)                                                     |
 | `json`        | No      | JSON file support (implies `file`)                                                     |
 | `validator`   | No      | Validation integration with `validator` crate                                          |
-| `serde`       | No      | Standalone serde support (without file loading)                                        |
+| `serde`       | No      | Standalone serde support (only needed for `format` attribute or `ConfigBuilder`)       |
 | `tracing`     | No      | Tracing instrumentation                                                                |
 | `provider`    | No      | Provider trait and ConfigLoader                                                        |
 | `async`       | No      | Async provider support (requires `provider`)                                           |
@@ -192,32 +227,87 @@ struct Config {
 
 ## File Configuration
 
-Load configuration from files with environment variable overrides:
+procenv offers **two approaches** to file configuration:
+
+### Approach 1: Serde-Free (Recommended)
+
+Just use `#[derive(EnvConfig)]` - no serde dependency needed on your structs!
 
 ```rust
 use procenv::EnvConfig;
-use serde::Deserialize;
 
-#[derive(EnvConfig, Deserialize)]
+// Nested config - also no serde needed!
+#[derive(EnvConfig)]
+struct DatabaseConfig {
+    #[env(var = "DB_HOST", default = "localhost")]
+    host: String,
+    #[env(var = "DB_PORT", default = "5432")]
+    port: u16,
+}
+
+#[derive(EnvConfig)]
 #[env_config(
     prefix = "APP_",
     file_optional = "config.toml",
     dotenv
 )]
 struct Config {
-    #[env(var = "DATABASE_URL")]
-    database_url: String,
+    #[env(var = "NAME", default = "myapp")]
+    name: String,
 
     #[env(var = "PORT", default = "8080")]
     port: u16,
+
+    #[env(flatten)]
+    database: DatabaseConfig,
 }
 
 // Load with layered priority: defaults < file < env
 let config = Config::from_config()?;
-
-// Or with source attribution
-let (config, sources) = Config::from_config_with_sources()?;
 ```
+
+This follows the "clap pattern" - the macro generates field-by-field extraction using `FromStr`, eliminating any serde dependency on your config structs.
+
+### Approach 2: ConfigBuilder (Advanced)
+
+For complex scenarios requiring programmatic control, use `ConfigBuilder` directly. This **does require serde**.
+
+```rust
+use procenv::ConfigBuilder;
+use procenv::serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+#[serde(crate = "procenv::serde")]
+struct Config {
+    name: String,
+    port: u16,
+}
+
+// Advanced: multiple files, custom defaults, programmatic config
+let config: Config = ConfigBuilder::new()
+    .defaults_value(serde_json::json!({"port": 3000}))
+    .file_optional("config.toml")
+    .file_optional("config.local.toml")  // Override file
+    .env_prefix("APP_")
+    .build()?;
+```
+
+**When to use ConfigBuilder:**
+
+- Loading from multiple config files with explicit ordering
+- Programmatic default values (not just string literals)
+- Dynamic file paths determined at runtime
+- Integration with existing serde-based types
+
+### Which Approach Should I Use?
+
+| Scenario                                            | Recommended Approach             |
+| --------------------------------------------------- | -------------------------------- |
+| Simple app config                                   | **Serde-free** (`from_config()`) |
+| Nested configs with `#[env(flatten)]`               | **Serde-free**                   |
+| Multiple override files (e.g., `config.local.toml`) | ConfigBuilder                    |
+| Programmatic defaults from code                     | ConfigBuilder                    |
+| Existing types that already derive `Deserialize`    | ConfigBuilder                    |
 
 ### File Error Diagnostics
 
@@ -603,6 +693,7 @@ Run the example: `cargo run --example hot_reload --features watch`
 | **Maturity**            | Experimental | Production | Production | Stable |
 | Error accumulation      | Yes          | No         | No         | No     |
 | miette diagnostics      | Yes          | No         | No         | No     |
+| Serde-free file loading | Yes          | No         | No         | N/A    |
 | .env.example generation | Yes          | No         | No         | No     |
 | CLI integration         | Yes          | No         | No         | No     |
 | Validation integration  | Yes          | No         | No         | No     |
@@ -647,7 +738,7 @@ procenv uses compile-time code generation, making it significantly faster than r
 **Why procenv is faster:**
 
 - **Compile-time code generation** - Direct `std::env::var()` calls, no runtime reflection
-- **No serde overhead** - Other crates deserialize through serde at runtime
+- **Serde-free file loading** - Extracts fields using `FromStr`, no serde on your structs
 - **No intermediate structures** - config/figment build HashMaps before deserializing
 - **Direct type parsing** - Uses `str::parse()` without type erasure
 
@@ -822,6 +913,7 @@ cargo +nightly fuzz run fuzz_toml_parsing -- -max_total_time=60
 cargo run --example basic
 cargo run --example source_attribution
 cargo run --example file_config --features file-all
+cargo run --example serde_free --features file-all    # No serde needed!
 cargo run --example complex_flatten --features file-all
 cargo run --example hot_reload --features watch
 ```

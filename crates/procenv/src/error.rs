@@ -219,6 +219,26 @@ pub enum Error {
         var: String,
     },
 
+    /// A field extraction error occurred during config loading.
+    ///
+    /// This occurs when a field cannot be extracted from the merged
+    /// JSON configuration (type mismatch, missing required field, etc.).
+    #[diagnostic(code(procenv::extraction_error))]
+    Extraction {
+        /// The field name that failed extraction.
+        field: String,
+
+        /// The expected type.
+        expected_type: String,
+
+        /// Error message.
+        message: String,
+
+        /// Help text.
+        #[help]
+        help: String,
+    },
+
     /// An environment variable value could not be parsed into the expected type.
     #[diagnostic(code(procenv::parse_error))]
     Parse {
@@ -449,6 +469,18 @@ impl Display for Error {
                     "type mismatch for '{key}': expected {expected}, found {found}"
                 )
             }
+
+            Error::Extraction {
+                field,
+                expected_type,
+                message,
+                ..
+            } => {
+                write!(
+                    f,
+                    "failed to extract field '{field}' as {expected_type}: {message}"
+                )
+            }
         }
     }
 }
@@ -575,6 +607,20 @@ impl Debug for Error {
                 writeln!(f, "  | found: {found}")?;
                 write!(f, "  help: {help}")
             }
+
+            Error::Extraction {
+                field,
+                expected_type,
+                message,
+                help,
+            } => {
+                writeln!(f, "procenv::extraction_error")?;
+                writeln!(f)?;
+                writeln!(f, "  x failed to extract field '{field}'")?;
+                writeln!(f, "  | expected: {expected_type}")?;
+                writeln!(f, "  | error: {message}")?;
+                write!(f, "  help: {help}")
+            }
         }
     }
 }
@@ -690,6 +736,23 @@ impl Error {
             expected,
             found,
             help: format!("the value is stored as {found}, try accessing it as that type"),
+        }
+    }
+
+    /// Creates an `Extraction` error.
+    ///
+    /// Used by macro-generated `from_config()` when field extraction fails.
+    pub fn extraction(
+        field: impl Into<String>,
+        expected_type: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        let expected_type = expected_type.into();
+        Error::Extraction {
+            field: field.into(),
+            expected_type: expected_type.clone(),
+            message: message.into(),
+            help: format!("check that the config value is a valid {expected_type}"),
         }
     }
 }

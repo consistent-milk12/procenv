@@ -327,9 +327,7 @@ pub trait FieldGenerator {
     /// Returns the field's type for flatten fields.
     ///
     /// Used to generate calls to nested types' methods (e.g., `__config_defaults()`).
-    fn field_type(&self) -> Option<&Type> {
-        None
-    }
+    fn field_type(&self) -> Option<&Type>;
 
     /// Returns the prefix for flatten fields.
     ///

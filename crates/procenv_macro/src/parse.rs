@@ -537,7 +537,7 @@ impl Parser {
     /// ```
     ///
     /// This is more concise and expresses intent clearly: "if there's a long arg,
-    /// create a CliAttr; otherwise None".
+    /// create a `CliAttr`; otherwise None".
     fn build(self, attr: &Attribute) -> SynResult<EnvAttr> {
         // Ensure `var` was provided - this is the only required option
         let var_name = self

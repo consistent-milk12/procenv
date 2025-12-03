@@ -17,11 +17,15 @@
 //! let port: u16 = value.cast().unwrap();
 //! ```
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 use num_traits::{NumCast, ToPrimitive};
+
+#[cfg(feature = "file")]
+use serde_json as SJSON;
 
 // ============================================================================
 // Macros for reducing boilerplate
@@ -314,10 +318,12 @@ impl ConfigValue {
     /// Returns string representation (borrowed when possible).
     ///
     /// Uses `Display` formatting for non-String variants to avoid cloning.
-    fn to_string_repr(&self) -> std::borrow::Cow<'_, str> {
+    fn to_string_repr(&self) -> Cow<'_, str> {
         use std::borrow::Cow;
+
         match self {
             ConfigValue::String(s) => Cow::Borrowed(s),
+
             // Use Display trait instead of cloning + into_string()
             other => Cow::Owned(other.to_string()),
         }
@@ -333,14 +339,17 @@ impl ConfigValue {
     #[must_use]
     pub fn get_path(&self, path: &str) -> Option<&ConfigValue> {
         let mut current = self;
+
         for key in path.split('.') {
             match current {
                 ConfigValue::Map(m) => {
                     current = m.get(key)?;
                 }
+
                 _ => return None,
             }
         }
+
         Some(current)
     }
 
@@ -436,6 +445,111 @@ impl<T: Into<ConfigValue>> From<Option<T>> for ConfigValue {
             Some(v) => v.into(),
             None => ConfigValue::None,
         }
+    }
+}
+
+// ============================================================================
+// JSON Value Extraction (for macro-generated code)
+// ============================================================================
+
+impl ConfigValue {
+    /// Creates a `ConfigValue` from a `serde_json::Value`.
+    ///
+    /// This is the bridge between file-loaded JSON and our type safe extraction.
+    /// Used by macro generated `__from_json_value()` methods.
+    #[cfg(feature = "file")]
+    #[must_use]
+    pub fn from_json(value: SJSON::Value) -> Self {
+        match value {
+            SJSON::Value::Null => ConfigValue::None,
+
+            SJSON::Value::Bool(b) => ConfigValue::Boolean(b),
+
+            SJSON::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    ConfigValue::Integer(i)
+                } else if let Some(u) = n.as_u64() {
+                    ConfigValue::UnsignedInteger(u)
+                } else if let Some(f) = n.as_f64() {
+                    ConfigValue::Float(f)
+                } else {
+                    // Fallback: Convert to String.
+                    ConfigValue::String(n.to_string())
+                }
+            }
+
+            SJSON::Value::String(s) => ConfigValue::String(s),
+
+            SJSON::Value::Array(arr) => {
+                ConfigValue::List(arr.into_iter().map(Self::from_json).collect())
+            }
+
+            SJSON::Value::Object(map) => ConfigValue::Map(
+                map.into_iter()
+                    .map(|(k, v)| (k, Self::from_json(v)))
+                    .collect(),
+            ),
+        }
+    }
+
+    /// Extracts and parses a value to type `T` using `FromStr`.
+    ///
+    /// This is the primary extraction method used by macro-generated code.
+    /// It handles type coercion and produces appropriate error messages.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The target type (must implement `FromStr`)
+    ///
+    /// # Errors
+    ///
+    /// Returns a boxed error if parsing fails.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let value = ConfigValue::from_json(json!(8080));
+    /// let port: u16 = value.extract("port")?;
+    /// ```
+    pub fn extract<T: FromStr>(
+        &self,
+        field_name: &str,
+    ) -> Result<T, Box<dyn std::error::Error + Send + Sync>>
+    where
+        T::Err: std::error::Error + Send + Sync + 'static,
+    {
+        let string_repr: Cow<'_, str> = self.to_string_repr();
+
+        string_repr.parse::<T>().map_err(|e| {
+            let err: Box<dyn std::error::Error + Send + Sync> = Box::new(e);
+
+            err
+        })
+    }
+
+    /// Extracts a boolean value with flexible parsing.
+    ///
+    /// Accepts: `true`, `false`, `1`, `0`, `"true"`, `"false"`, `"yes"`, `"no"`, etc.
+    #[must_use]
+    pub fn extract_bool(&self) -> Option<bool> {
+        self.as_bool()
+    }
+
+    /// Extracts a String value.
+    ///
+    /// For non-string types, converts to string representation.
+    #[must_use]
+    pub fn extract_string(&self) -> String {
+        match self {
+            ConfigValue::String(s) => s.clone(),
+            other => other.to_string(),
+        }
+    }
+
+    /// Checks if this value represents "not set" (null/none).
+    #[must_use]
+    pub fn is_null(&self) -> bool {
+        matches!(self, ConfigValue::None)
     }
 }
 

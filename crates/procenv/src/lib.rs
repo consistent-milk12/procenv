@@ -189,6 +189,10 @@ pub use miette;
 #[cfg(feature = "serde")]
 pub use serde;
 
+// Convenience re-exports for common serde types
+#[cfg(feature = "serde")]
+pub use serde::{Deserialize, Serialize};
+
 /// Re-export serde_json when the serde feature is enabled.
 #[cfg(feature = "serde")]
 pub use serde_json;

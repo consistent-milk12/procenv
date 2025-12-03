@@ -1,7 +1,14 @@
 //! Example: File-based configuration with layered loading
 //!
-//! This demonstrates loading config from TOML/JSON/YAML files with
-//! environment variable overrides.
+//! This demonstrates TWO approaches to file configuration:
+//!
+//! 1. **Simple (serde-free)**: Use `#[derive(EnvConfig)]` + `from_config()`
+//!    - No serde dependency needed on your structs
+//!    - Best for most use cases
+//!
+//! 2. **Advanced (ConfigBuilder)**: Use `ConfigBuilder` directly
+//!    - Requires serde's `Deserialize` derive
+//!    - More control: custom defaults, multiple files, programmatic config
 //!
 //! Run with:
 //!   `cargo run --example file_config --features file-all`
@@ -19,9 +26,42 @@
 )]
 
 use procenv::serde::Deserialize;
-use procenv::ConfigBuilder;
+use procenv::{ConfigBuilder, EnvConfig};
 
-/// Database configuration (nested)
+// ============================================================================
+// APPROACH 1: Simple (Serde-Free) - Recommended for most cases
+// ============================================================================
+
+/// Database configuration - NO serde needed!
+#[derive(EnvConfig)]
+struct SimpleDatabase {
+    #[env(var = "DB_HOST", default = "localhost")]
+    host: String,
+    #[env(var = "DB_PORT", default = "5432")]
+    port: u16,
+    #[env(var = "DB_NAME", default = "myapp")]
+    name: String,
+}
+
+/// Simple config using EnvConfig - NO serde needed!
+#[derive(EnvConfig)]
+#[env_config(prefix = "SIMPLE_", file_optional = "crates/procenv/data/config.toml")]
+struct SimpleConfig {
+    #[env(var = "NAME", default = "myapp")]
+    name: String,
+    #[env(var = "PORT", default = "8080")]
+    port: u16,
+    #[env(var = "DEBUG", default = "false")]
+    debug: bool,
+    #[env(flatten)]
+    database: SimpleDatabase,
+}
+
+// ============================================================================
+// APPROACH 2: Advanced (ConfigBuilder) - For complex scenarios
+// ============================================================================
+
+/// Database configuration (nested) - requires Deserialize for ConfigBuilder
 #[derive(Debug, Deserialize, Default)]
 #[serde(crate = "procenv::serde")]
 struct DatabaseConfig {
@@ -43,7 +83,7 @@ fn default_db_name() -> String {
     "myapp".to_string()
 }
 
-/// Application configuration
+/// Application configuration - requires Deserialize for ConfigBuilder
 #[derive(Debug, Deserialize)]
 #[serde(crate = "procenv::serde")]
 struct AppConfig {
@@ -73,6 +113,32 @@ fn default_port() -> u16 {
 
 fn main() {
     println!("=== File Configuration Example ===\n");
+
+    // ========================================================================
+    // APPROACH 1: Simple serde-free loading with EnvConfig
+    // ========================================================================
+    println!("=== APPROACH 1: Serde-Free (Recommended) ===\n");
+
+    match SimpleConfig::from_config() {
+        Ok(config) => {
+            println!("Loaded with just #[derive(EnvConfig)] - no serde needed!");
+            println!("   name:     {}", config.name);
+            println!("   port:     {}", config.port);
+            println!("   debug:    {}", config.debug);
+            println!(
+                "   database: {}:{}/{}",
+                config.database.host, config.database.port, config.database.name
+            );
+        }
+        Err(e) => eprintln!("   Error: {e}"),
+    }
+
+    println!();
+
+    // ========================================================================
+    // APPROACH 2: Advanced ConfigBuilder (requires serde)
+    // ========================================================================
+    println!("=== APPROACH 2: ConfigBuilder (Advanced) ===\n");
 
     // Method 1: Load from file using ConfigBuilder
     println!("1. Loading from TOML file:\n");

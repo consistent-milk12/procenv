@@ -11,6 +11,7 @@ fuzz/target/
 fuzz/corpus/
 fuzz/artifacts/
 fuzz/Cargo.lock
+crates/scratch_crate/
 
 # Proptest regression files
 *.proptest-regressions

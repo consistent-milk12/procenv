@@ -56,6 +56,8 @@ use crate::parse::EnvConfigAttr;
 use super::env::generate_dotenv_load;
 
 /// Generate the `from_config()` method for file-based configuration loading.
+///
+/// This generates self-contained deserialization - no serde derive required.
 #[expect(
     clippy::too_many_lines,
     reason = "proc-macro code generation inherently requires verbose quote! blocks"
@@ -265,10 +267,7 @@ pub fn generate_from_config_impl(
         .collect();
 
     quote! {
-        impl #impl_generics #struct_name #type_generics #where_clause
-        where
-            Self: ::procenv::serde::de::DeserializeOwned,
-        {
+        impl #impl_generics #struct_name #type_generics #where_clause {
             /// Load configuration from files and environment variables.
             pub fn from_config() -> std::result::Result<Self, ::procenv::Error> {
                 #dotenv_load
@@ -285,7 +284,8 @@ pub fn generate_from_config_impl(
 
                 #env_mappings
 
-                builder.build()
+                let (__value, __origins) = builder.into_value()?;
+                Self::__from_json_value(__value)
             }
 
             /// Load configuration from files and environment variables with source attribution.
@@ -308,7 +308,8 @@ pub fn generate_from_config_impl(
 
                 #env_mappings
 
-                let (__config, __origins) = builder.build_with_origins()?;
+                let (__value, __origins) = builder.into_value()?;
+                let __config = Self::__from_json_value(__value)?;
 
                 let mut __sources = ::procenv::ConfigSources::new();
                 #(#source_entries)*
@@ -317,6 +318,295 @@ pub fn generate_from_config_impl(
             }
         }
     }
+}
+
+/// Generate field extraction code for `__from_json_value`.
+///
+/// IMPORTANT: This function requires access to the field's actual type for proper
+/// code generation. The `FieldGenerator` trait needs a `field_type()` method that
+/// returns the type for ALL field kinds (not just flatten).
+#[expect(clippy::too_many_lines, reason = "Complex proc-macro logic")]
+fn generate_field_extractions(generators: &[Box<dyn FieldGenerator>]) -> QuoteStream {
+    let extractions: Vec<QuoteStream> = generators
+        .iter()
+        .map(|g| {
+            let name = g.name();
+            let field_name_str = name.to_string();
+            let local_var = quote::format_ident!("__{}", name);
+
+            if g.is_flatten() {
+                // Flatten field: extract nested object and call nested type's __from_json_value
+                let ty = g.field_type().expect("flatten field must have type");
+                quote! {
+                    let #local_var: std::option::Option<#ty> = {
+                        let nested_value = __obj.get(#field_name_str)
+                            .cloned()
+                            .unwrap_or(::serde_json::Value::Object(::serde_json::Map::new()));
+                        match <#ty>::__from_json_value(nested_value) {
+                            std::result::Result::Ok(v) => std::option::Option::Some(v),
+                            std::result::Result::Err(e) => {
+                                __errors.push(e);
+                                std::option::Option::None
+                            }
+                        }
+                    };
+                }
+            } else if g.is_optional() {
+                // Optional field: None if missing
+                // Note: For optional fields, field_type() returns the INNER type (T from Option<T>)
+                let inner_ty = g.field_type().expect("optional field must have inner type");
+                let type_name = g.type_name();
+
+                if g.format_config().is_some() {
+                    // Optional with serde format
+                    quote! {
+                        let #local_var: std::option::Option<std::option::Option<#inner_ty>> = match __obj.get(#field_name_str) {
+                            std::option::Option::Some(v) if !v.is_null() => {
+                                match ::serde_json::from_value::<#inner_ty>(v.clone()) {
+                                    std::result::Result::Ok(parsed) => std::option::Option::Some(std::option::Option::Some(parsed)),
+                                    std::result::Result::Err(e) => {
+                                        __errors.push(::procenv::Error::extraction(
+                                            #field_name_str,
+                                            #type_name,
+                                            e.to_string()
+                                        ));
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                            _ => std::option::Option::Some(std::option::Option::None),
+                        };
+                    }
+                } else {
+                    // Optional with FromStr
+                    quote! {
+                        let #local_var: std::option::Option<std::option::Option<#inner_ty>> = match __obj.get(#field_name_str) {
+                            std::option::Option::Some(v) if !v.is_null() => {
+                                let cv = ::procenv::ConfigValue::from_json(v.clone());
+                                match cv.extract::<#inner_ty>(#field_name_str) {
+                                    std::result::Result::Ok(parsed) => std::option::Option::Some(std::option::Option::Some(parsed)),
+                                    std::result::Result::Err(e) => {
+                                        __errors.push(::procenv::Error::extraction(
+                                            #field_name_str,
+                                            #type_name,
+                                            e.to_string()
+                                        ));
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                            _ => std::option::Option::Some(std::option::Option::None),
+                        };
+                    }
+                }
+            } else if g.is_secrecy_type() && g.field_type().is_none() {
+                // SecretString field - special handling since it doesn't store a Type
+                quote! {
+                    let #local_var: std::option::Option<::procenv::SecretString> = match __obj.get(#field_name_str) {
+                        std::option::Option::Some(v) if !v.is_null() => {
+                            match v.as_str() {
+                                std::option::Option::Some(s) => {
+                                    std::option::Option::Some(::procenv::SecretString::from(s.to_string()))
+                                }
+                                std::option::Option::None => {
+                                    __errors.push(::procenv::Error::extraction(
+                                        #field_name_str,
+                                        "SecretString",
+                                        "expected string value"
+                                    ));
+                                    std::option::Option::None
+                                }
+                            }
+                        }
+                        _ => {
+                            __errors.push(::procenv::Error::missing(#field_name_str));
+                            std::option::Option::None
+                        }
+                    };
+                }
+            } else if g.is_secrecy_type() && g.field_type().is_some() {
+                // SecretBox<T> field - parse inner type and wrap in SecretBox
+                let inner_ty = g.field_type().expect("SecretBox field must have inner type");
+                let type_name = g.type_name();
+
+                quote! {
+                    let #local_var: std::option::Option<::procenv::SecretBox<#inner_ty>> = match __obj.get(#field_name_str) {
+                        std::option::Option::Some(v) if !v.is_null() => {
+                            let cv = ::procenv::ConfigValue::from_json(v.clone());
+                            match cv.extract::<#inner_ty>(#field_name_str) {
+                                std::result::Result::Ok(parsed) => {
+                                    std::option::Option::Some(::procenv::SecretBox::init_with(|| parsed))
+                                }
+                                std::result::Result::Err(e) => {
+                                    __errors.push(::procenv::Error::extraction(
+                                        #field_name_str,
+                                        #type_name,
+                                        e.to_string()
+                                    ));
+                                    std::option::Option::None
+                                }
+                            }
+                        }
+                        _ => {
+                            __errors.push(::procenv::Error::missing(#field_name_str));
+                            std::option::Option::None
+                        }
+                    };
+                }
+            } else if g.format_config().is_some() {
+                // Field with format = "json/yaml/toml" - use serde deserialization
+                let ty = g.field_type().expect("format field must have type");
+                let type_name = g.type_name();
+
+                if let Some(default) = g.default_value() {
+                    // Default field with serde format
+                    quote! {
+                        let #local_var: std::option::Option<#ty> = match __obj.get(#field_name_str) {
+                            std::option::Option::Some(v) if !v.is_null() => {
+                                match ::serde_json::from_value::<#ty>(v.clone()) {
+                                    std::result::Result::Ok(parsed) => std::option::Option::Some(parsed),
+                                    std::result::Result::Err(e) => {
+                                        __errors.push(::procenv::Error::extraction(
+                                            #field_name_str,
+                                            #type_name,
+                                            e.to_string()
+                                        ));
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                            _ => {
+                                // Use default value - parse JSON string
+                                match ::serde_json::from_str::<#ty>(#default) {
+                                    std::result::Result::Ok(v) => std::option::Option::Some(v),
+                                    std::result::Result::Err(e) => {
+                                        __errors.push(::procenv::Error::extraction(
+                                            #field_name_str,
+                                            #type_name,
+                                            format!("failed to parse default: {}", e)
+                                        ));
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                        };
+                    }
+                } else {
+                    // Required field with serde format
+                    quote! {
+                        let #local_var: std::option::Option<#ty> = match __obj.get(#field_name_str) {
+                            std::option::Option::Some(v) if !v.is_null() => {
+                                match ::serde_json::from_value::<#ty>(v.clone()) {
+                                    std::result::Result::Ok(parsed) => std::option::Option::Some(parsed),
+                                    std::result::Result::Err(e) => {
+                                        __errors.push(::procenv::Error::extraction(
+                                            #field_name_str,
+                                            #type_name,
+                                            e.to_string()
+                                        ));
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                            _ => {
+                                __errors.push(::procenv::Error::missing(#field_name_str));
+                                std::option::Option::None
+                            }
+                        };
+                    }
+                }
+            } else {
+                // Required or Default field (using FromStr)
+                let ty = g.field_type().expect("field must have type");
+                let type_name = g.type_name();
+
+                if let Some(default) = g.default_value() {
+                    // Default field: use default if missing
+                    quote! {
+                        let #local_var: std::option::Option<#ty> = match __obj.get(#field_name_str) {
+                            std::option::Option::Some(v) if !v.is_null() => {
+                                let cv = ::procenv::ConfigValue::from_json(v.clone());
+                                match cv.extract::<#ty>(#field_name_str) {
+                                    std::result::Result::Ok(parsed) => std::option::Option::Some(parsed),
+                                    std::result::Result::Err(e) => {
+                                        __errors.push(::procenv::Error::extraction(
+                                            #field_name_str,
+                                            #type_name,
+                                            e.to_string()
+                                        ));
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                            _ => {
+                                // Use default value
+                                match #default.parse::<#ty>() {
+                                    std::result::Result::Ok(v) => std::option::Option::Some(v),
+                                    std::result::Result::Err(e) => {
+                                        __errors.push(::procenv::Error::extraction(
+                                            #field_name_str,
+                                            #type_name,
+                                            format!("failed to parse default: {}", e)
+                                        ));
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                        };
+                    }
+                } else {
+                    // Required field: error if missing
+                    quote! {
+                        let #local_var: std::option::Option<#ty> = match __obj.get(#field_name_str) {
+                            std::option::Option::Some(v) if !v.is_null() => {
+                                let cv = ::procenv::ConfigValue::from_json(v.clone());
+                                match cv.extract::<#ty>(#field_name_str) {
+                                    std::result::Result::Ok(parsed) => std::option::Option::Some(parsed),
+                                    std::result::Result::Err(e) => {
+                                        __errors.push(::procenv::Error::extraction(
+                                            #field_name_str,
+                                            #type_name,
+                                            e.to_string()
+                                        ));
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                            _ => {
+                                __errors.push(::procenv::Error::missing(#field_name_str));
+                                std::option::Option::None
+                            }
+                        };
+                    }
+                }
+            }
+        })
+        .collect();
+
+    quote! { #(#extractions)* }
+}
+
+/// Generate field assignment expressions for struct construction.
+fn generate_field_assignments_from_json(generators: &[Box<dyn FieldGenerator>]) -> QuoteStream {
+    let assignments: Vec<QuoteStream> = generators
+        .iter()
+        .map(|g| {
+            let name = g.name();
+            let local_var = quote::format_ident!("__{}", name);
+
+            if g.is_optional() {
+                // Optional fields are Option<Option<T>> during extraction
+                // Flatten to Option<T>
+                quote! { #name: #local_var.flatten(), }
+            } else {
+                // Required/default/flatten fields use .unwrap()
+                // Safe because we checked for errors above
+                quote! { #name: #local_var.unwrap(), }
+            }
+        })
+        .collect();
+
+    quote! { #(#assignments)* }
 }
 
 /// Generate profile setup code and profile defaults for `from_config()`.
@@ -454,6 +744,8 @@ pub fn generate_config_defaults_impl(
         .collect();
 
     quote! {
+        // Only generate __config_defaults when file feature is enabled
+        #[cfg(feature = "file")]
         impl #impl_generics #struct_name #type_generics #where_clause {
             /// Returns default values for this config as a JSON object.
             #[doc(hidden)]
@@ -462,6 +754,55 @@ pub fn generate_config_defaults_impl(
                 #(#default_entries)*
                 #(#flatten_entries)*
                 ::procenv::file::JsonValue::Object(__map)
+            }
+        }
+    }
+}
+
+/// Generate the `__from_json_value()` method for serde-free deserialization.
+///
+/// This method is generated for ALL EnvConfig structs so they can be used
+/// as nested types in `from_config()`. It extracts fields from a JSON value
+/// without requiring the struct to derive `Deserialize`.
+pub fn generate_from_json_value_impl(
+    struct_name: &Ident,
+    generics: &Generics,
+    generators: &[Box<dyn FieldGenerator>],
+) -> QuoteStream {
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+
+    let field_extractions = generate_field_extractions(generators);
+    let field_assignments = generate_field_assignments_from_json(generators);
+
+    quote! {
+        // Only generate __from_json_value when file feature is enabled
+        // (needed for from_config() and nested struct support)
+        #[cfg(feature = "file")]
+        impl #impl_generics #struct_name #type_generics #where_clause {
+            /// Extract config from a JSON value (internal, generated by macro).
+            #[doc(hidden)]
+            pub fn __from_json_value(
+                __value: ::serde_json::Value
+            ) -> std::result::Result<Self, ::procenv::Error> {
+                let __obj = __value.as_object().ok_or_else(|| {
+                    ::procenv::Error::extraction(
+                        "<root>",
+                        "object",
+                        "expected JSON object at root"
+                    )
+                })?;
+
+                let mut __errors: std::vec::Vec<::procenv::Error> = std::vec::Vec::new();
+
+                #field_extractions
+
+                if let std::option::Option::Some(err) = ::procenv::Error::multiple(__errors) {
+                    return std::result::Result::Err(err);
+                }
+
+                std::result::Result::Ok(Self {
+                    #field_assignments
+                })
             }
         }
     }

@@ -445,4 +445,8 @@ impl FieldGenerator for RequiredField {
     fn validate_fn(&self) -> Option<&str> {
         self.validate.as_deref()
     }
+
+    fn field_type(&self) -> Option<&Type> {
+        Some(&self.ty)
+    }
 }

@@ -309,6 +309,37 @@ impl ConfigBuilder {
         Ok((self.base, self.origins))
     }
 
+    /// Merges all configuration sources and returns the raw JSON value.
+    ///
+    /// Unlike [`build()`](Self::build), this method does NOT deserialize
+    /// the result. Use this when you want to extract values manually
+    /// (e.g., for macro-generated field-by-field extraction).
+    ///
+    /// # Returns
+    ///
+    /// A tuple of:
+    /// - The merged JSON value
+    /// - An [`OriginTracker`] with source information for each path
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FileError`] if a required file is missing or cannot be parsed.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let (value, origins) = ConfigBuilder::new()
+    ///     .file("config.toml")
+    ///     .env_prefix("APP_")
+    ///     .into_value()?;
+    ///
+    /// // Now extract fields manually
+    /// let port = value.get("port").and_then(|v| v.as_u64());
+    /// ```
+    pub fn into_value(self) -> Result<(SJSON::Value, OriginTracker), FileError> {
+        self.merge()
+    }
+
     /// Builds the configuration by merging sources and deserializing.
     ///
     /// This is the primary method for loading configuration. It:

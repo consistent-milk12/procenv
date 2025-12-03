@@ -403,4 +403,8 @@ impl FieldGenerator for OptionalField {
     fn is_optional(&self) -> bool {
         true
     }
+
+    fn field_type(&self) -> Option<&Type> {
+        Some(&self.inner_type)
+    }
 }

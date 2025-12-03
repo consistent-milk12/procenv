@@ -193,6 +193,12 @@ impl FieldGenerator for SecretStringField {
     fn env_var_name(&self) -> Option<&str> {
         Some(&self.env_var)
     }
+
+    fn field_type(&self) -> Option<&Type> {
+        // SecretString doesn't have a stored Type since it's always SecretString
+        // The extraction code handles this specially by checking is_secrecy_type()
+        None
+    }
 }
 
 /// A field of type `SecretBox<T>` for secret values of any parseable type.
@@ -386,6 +392,10 @@ impl FieldGenerator for SecretBoxField {
 
     fn env_var_name(&self) -> Option<&str> {
         Some(&self.env_var)
+    }
+
+    fn field_type(&self) -> Option<&Type> {
+        Some(&self.inner_type)
     }
 }
 
