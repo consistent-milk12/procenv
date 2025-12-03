@@ -174,9 +174,55 @@
 // Re-export the derive macro
 pub use procenv_macro::EnvConfig;
 
-// Secrecy integration
+// ============================================================================
+// Re-exported Dependencies
+// ============================================================================
+// These are re-exported so users don't need to add them as direct dependencies.
+// The macro generates code that references these via ::procenv::serde::, etc.
+
+/// Re-export miette for error handling.
+/// Users can use `procenv::miette` instead of adding miette as a dependency.
+pub use miette;
+
+/// Re-export serde when the feature is enabled.
+/// Required for file-based configuration and the `format` attribute.
+#[cfg(feature = "serde")]
+pub use serde;
+
+/// Re-export serde_json when the serde feature is enabled.
+#[cfg(feature = "serde")]
+pub use serde_json;
+
+/// Re-export clap when the feature is enabled.
+/// Required for CLI argument integration.
+#[cfg(feature = "clap")]
+pub use clap;
+
+/// Re-export validator when the feature is enabled.
+/// Required for validation support.
+#[cfg(feature = "validator")]
+pub use validator;
+
+/// Re-export secrecy when the feature is enabled.
+/// Required for secret field types.
+#[cfg(feature = "secrecy")]
+pub use secrecy;
+
+// Convenience re-exports for common secrecy types
 #[cfg(feature = "secrecy")]
 pub use secrecy::{ExposeSecret, ExposeSecretMut, SecretBox, SecretString};
+
+/// Re-export toml when the feature is enabled.
+#[cfg(feature = "toml")]
+pub use toml;
+
+/// Re-export serde-saphyr (yaml) when the feature is enabled.
+#[cfg(feature = "yaml")]
+pub use serde_saphyr as yaml;
+
+/// Re-export dotenvy when the dotenv feature is enabled.
+#[cfg(feature = "dotenv")]
+pub use dotenvy;
 
 // ============================================================================
 // Core Modules

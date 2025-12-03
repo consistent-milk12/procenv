@@ -128,7 +128,7 @@ pub fn generate_from_args_impl(
 
             /// Load configuration from CLI arguments with source attribution.
             pub fn from_args_with_sources() -> std::result::Result<(Self, ::procenv::ConfigSources), ::procenv::Error> {
-                let __cmd = ::clap::Command::new(env!("CARGO_PKG_NAME"))
+                let __cmd = ::procenv::clap::Command::new(env!("CARGO_PKG_NAME"))
                     .version(env!("CARGO_PKG_VERSION"))
                     #(.arg(#clap_args))*;
 
@@ -143,7 +143,7 @@ pub fn generate_from_args_impl(
                 I: IntoIterator<Item = T>,
                 T: Into<std::ffi::OsString> + Clone,
             {
-                let __cmd = ::clap::Command::new(env!("CARGO_PKG_NAME"))
+                let __cmd = ::procenv::clap::Command::new(env!("CARGO_PKG_NAME"))
                     .version(env!("CARGO_PKG_VERSION"))
                     #(.arg(#clap_args))*;
 
@@ -154,7 +154,7 @@ pub fn generate_from_args_impl(
             }
 
             /// Internal helper to process clap matches into config.
-            fn __from_args_matches(__matches: ::clap::ArgMatches) -> std::result::Result<(Self, ::procenv::ConfigSources), ::procenv::Error> {
+            fn __from_args_matches(__matches: ::procenv::clap::ArgMatches) -> std::result::Result<(Self, ::procenv::ConfigSources), ::procenv::Error> {
 
                 // Extract CLI values
                 #(#cli_extractions)*

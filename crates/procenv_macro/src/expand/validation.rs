@@ -175,7 +175,7 @@ pub fn generate_from_config_validated_impl(
     quote! {
         impl #impl_generics #struct_name #type_generics #where_clause
         where
-            Self: ::procenv::Validate + ::serde::de::DeserializeOwned,
+            Self: ::procenv::Validate + ::procenv::serde::de::DeserializeOwned,
         {
             /// Load configuration from files with validation.
             pub fn from_config_validated() -> std::result::Result<Self, ::procenv::Error> {

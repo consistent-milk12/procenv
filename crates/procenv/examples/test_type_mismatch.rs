@@ -15,10 +15,11 @@
     clippy::result_large_err
 )]
 
+use procenv::serde::Deserialize;
 use procenv::ConfigBuilder;
-use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
+#[serde(crate = "procenv::serde")]
 struct SimpleConfig {
     name: String,
     port: u16,
@@ -26,12 +27,14 @@ struct SimpleConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(crate = "procenv::serde")]
 struct DatabaseConfig {
     host: String,
     port: u16,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(crate = "procenv::serde")]
 struct NestedConfig {
     name: String,
     port: u16,

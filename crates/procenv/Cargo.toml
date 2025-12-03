@@ -34,7 +34,7 @@ watch-async = ["watch", "async"]
 
 # File format support (Phase 13)
 # Enable file-based configuration loading
-file = ["dep:serde", "dep:serde_json", "dep:serde_path_to_error"]
+file = ["serde", "dep:serde_path_to_error"]
 # Enable TOML file support
 toml = ["file", "dep:toml"]
 # Enable YAML file support (uses serde-saphyr, the modern serde_yaml replacement)
@@ -57,7 +57,7 @@ full = [
 ]
 
 [dependencies]
-procenv_macro = { version = "0.1.11", path = "../procenv_macro" }
+procenv_macro = { version = "0.1.12", path = "../procenv_macro" }
 miette = { workspace = true }
 thiserror = { workspace = true }
 

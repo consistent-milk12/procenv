@@ -18,11 +18,12 @@
     clippy::result_large_err
 )]
 
+use procenv::serde::Deserialize;
 use procenv::ConfigBuilder;
-use serde::Deserialize;
 
 /// Database configuration (nested)
 #[derive(Debug, Deserialize, Default)]
+#[serde(crate = "procenv::serde")]
 struct DatabaseConfig {
     #[serde(default = "default_host")]
     host: String,
@@ -44,6 +45,7 @@ fn default_db_name() -> String {
 
 /// Application configuration
 #[derive(Debug, Deserialize)]
+#[serde(crate = "procenv::serde")]
 struct AppConfig {
     /// Application name
     #[serde(default = "default_name")]

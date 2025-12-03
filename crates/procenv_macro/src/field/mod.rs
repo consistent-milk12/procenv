@@ -358,7 +358,7 @@ pub trait FieldGenerator {
         };
 
         Some(quote! {
-            ::clap::Arg::new(#name_str)
+            ::procenv::clap::Arg::new(#name_str)
                 .long(#long)
                 #short_attr
                 .value_name(#name_str)

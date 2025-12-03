@@ -3,8 +3,8 @@
 //! This demonstrates the ARCHITECTURE - not a working implementation yet.
 //! The idea: leverage serde + existing format crates, just add layering logic.
 
-use serde::Deserialize;
-use serde_json::Value;
+use procenv::serde::Deserialize;
+use procenv::serde_json::Value;
 use std::fs;
 
 // ============================================================================
@@ -38,7 +38,7 @@ use std::fs;
 // This matches how most real apps work!
 
 // ============================================================================
-// THE TRICK: Use serde_json::Value as universal intermediate
+// THE TRICK: Use procenv::serde_json::Value as universal intermediate
 // ============================================================================
 
 /// Parse any supported format into a universal Value
@@ -51,14 +51,14 @@ fn parse_file(path: &str) -> Result<Value, Box<dyn std::error::Error>> {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
     {
         // toml -> Value
-        let toml_value: toml::Value = toml::from_str(&content)?;
+        let toml_value: procenv::toml::Value = procenv::toml::from_str(&content)?;
         Ok(toml_to_json(toml_value))
     } else if std::path::Path::new(path)
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
     {
         // json -> Value (already native!)
-        Ok(serde_json::from_str(&content)?)
+        Ok(procenv::serde_json::from_str(&content)?)
     } else if std::path::Path::new(path)
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("yaml"))
@@ -77,16 +77,16 @@ fn parse_file(path: &str) -> Result<Value, Box<dyn std::error::Error>> {
 }
 
 /// Convert TOML Value to JSON Value (they're almost identical)
-fn toml_to_json(toml: toml::Value) -> Value {
+fn toml_to_json(toml: procenv::toml::Value) -> Value {
     match toml {
-        toml::Value::String(s) => Value::String(s),
-        toml::Value::Integer(i) => Value::Number(i.into()),
-        toml::Value::Float(f) => Value::Number(serde_json::Number::from_f64(f).unwrap_or(0.into())),
-        toml::Value::Boolean(b) => Value::Bool(b),
-        toml::Value::Datetime(dt) => Value::String(dt.to_string()),
-        toml::Value::Array(arr) => Value::Array(arr.into_iter().map(toml_to_json).collect()),
-        toml::Value::Table(table) => {
-            let map: serde_json::Map<String, Value> = table
+        procenv::toml::Value::String(s) => Value::String(s),
+        procenv::toml::Value::Integer(i) => Value::Number(i.into()),
+        procenv::toml::Value::Float(f) => Value::Number(procenv::serde_json::Number::from_f64(f).unwrap_or(0.into())),
+        procenv::toml::Value::Boolean(b) => Value::Bool(b),
+        procenv::toml::Value::Datetime(dt) => Value::String(dt.to_string()),
+        procenv::toml::Value::Array(arr) => Value::Array(arr.into_iter().map(toml_to_json).collect()),
+        procenv::toml::Value::Table(table) => {
+            let map: procenv::serde_json::Map<String, Value> = table
                 .into_iter()
                 .map(|(k, v)| (k, toml_to_json(v)))
                 .collect();
@@ -134,7 +134,7 @@ fn coerce_value(s: &str) -> Value {
 
     // Try float
     if let Ok(f) = s.parse::<f64>()
-        && let Some(n) = serde_json::Number::from_f64(f)
+        && let Some(n) = procenv::serde_json::Number::from_f64(f)
     {
         return Value::Number(n);
     }
@@ -145,7 +145,7 @@ fn coerce_value(s: &str) -> Value {
 
 /// Convert env vars to nested Value using separator
 fn env_to_value(prefix: &str, separator: &str) -> Value {
-    let mut root = serde_json::Map::new();
+    let mut root = procenv::serde_json::Map::new();
 
     for (key, value) in std::env::vars() {
         if let Some(stripped) = key.strip_prefix(prefix) {
@@ -162,7 +162,7 @@ fn env_to_value(prefix: &str, separator: &str) -> Value {
     Value::Object(root)
 }
 
-fn insert_nested(map: &mut serde_json::Map<String, Value>, parts: &[&str], value: Value) {
+fn insert_nested(map: &mut procenv::serde_json::Map<String, Value>, parts: &[&str], value: Value) {
     if parts.is_empty() {
         return;
     }
@@ -172,7 +172,7 @@ fn insert_nested(map: &mut serde_json::Map<String, Value>, parts: &[&str], value
     } else {
         let entry = map
             .entry(parts[0].to_string())
-            .or_insert_with(|| Value::Object(serde_json::Map::new()));
+            .or_insert_with(|| Value::Object(procenv::serde_json::Map::new()));
 
         if let Value::Object(nested) = entry {
             insert_nested(nested, &parts[1..], value);
@@ -186,6 +186,7 @@ fn insert_nested(map: &mut serde_json::Map<String, Value>, parts: &[&str], value
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
+#[serde(crate = "procenv::serde")]
 struct DatabaseConfig {
     host: String,
     port: u16,
@@ -194,6 +195,7 @@ struct DatabaseConfig {
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
+#[serde(crate = "procenv::serde")]
 struct Config {
     debug: bool,
     database: DatabaseConfig,
@@ -201,7 +203,7 @@ struct Config {
 
 fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     // Start with defaults (could be from a Default impl or generated)
-    let mut merged = serde_json::json!({
+    let mut merged = procenv::serde_json::json!({
         "debug": false,
         "database": {
             "host": "localhost",
@@ -232,7 +234,7 @@ fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     }
 
     // Final: Deserialize merged Value into Config struct
-    let config: Config = serde_json::from_value(merged)?;
+    let config: Config = procenv::serde_json::from_value(merged)?;
     Ok(config)
 }
 

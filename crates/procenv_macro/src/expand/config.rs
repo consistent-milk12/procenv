@@ -267,7 +267,7 @@ pub fn generate_from_config_impl(
     quote! {
         impl #impl_generics #struct_name #type_generics #where_clause
         where
-            Self: ::serde::de::DeserializeOwned,
+            Self: ::procenv::serde::de::DeserializeOwned,
         {
             /// Load configuration from files and environment variables.
             pub fn from_config() -> std::result::Result<Self, ::procenv::Error> {
