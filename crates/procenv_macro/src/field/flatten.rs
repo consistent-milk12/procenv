@@ -158,8 +158,34 @@ impl FieldGenerator for FlattenField {
 
     fn generate_example_fragment(&self) -> QuoteStream {
         let ty = &self.ty;
-        // Generate a call to the nested type's env_example_entries method (without header)
-        quote! { <#ty>::env_example_entries() }
+
+        // Check if this flatten field has a prefix
+        if let Some(prefix) = &self.prefix {
+            // Apply prefix to each env var name in the nested entries
+            quote! {
+                {
+                    let nested = <#ty>::env_example_entries();
+                    // Prepend prefix to each VAR_NAME= line
+                    nested.lines()
+                        .map(|line| {
+                            // Skip comments and empty lines
+                            if line.starts_with('#') || line.is_empty() {
+                                line.to_string()
+                            } else if let std::option::Option::Some(eq_pos) = line.find('=') {
+                                // Prepend prefix to the variable name
+                                format!("{}{}", #prefix, line)
+                            } else {
+                                line.to_string()
+                            }
+                        })
+                        .collect::<std::vec::Vec<_>>()
+                        .join("\n")
+                }
+            }
+        } else {
+            // No prefix - just delegate to the nested type
+            quote! { <#ty>::env_example_entries() }
+        }
     }
 
     fn is_flatten(&self) -> bool {

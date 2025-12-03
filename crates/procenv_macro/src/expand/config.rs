@@ -99,12 +99,24 @@ pub fn generate_from_config_impl(
     let env_mapping_calls: Vec<QuoteStream> = generators
         .iter()
         .filter_map(|g| {
+            let field_name = g.name().to_string();
+
             if g.is_flatten() {
-                return None;
+                // For flatten fields, call the nested type's env mappings method
+                let ty = g.field_type()?;
+                let flatten_prefix = g.flatten_prefix().unwrap_or("");
+
+                return Some(quote! {
+                    // Register nested env mappings with combined prefix
+                    for (nested_field, nested_var) in <#ty>::__env_mappings() {
+                        let full_path = format!("{}.{}", #field_name, nested_field);
+                        let full_var = format!("{}{}", #flatten_prefix, nested_var);
+                        builder = builder.env_mapping(&full_path, &full_var);
+                    }
+                });
             }
 
             let env_var = g.env_var_name()?;
-            let field_name = g.name().to_string();
 
             Some(quote! {
                 builder = builder.env_mapping(#field_name, #env_var);
@@ -213,19 +225,41 @@ pub fn generate_from_config_impl(
             let has_default = g.default_value().is_some();
 
             if g.is_flatten() {
+                // Get flatten prefix for env var construction
+                let flatten_prefix = g.flatten_prefix().unwrap_or("");
+
                 quote! {
                     {
                         let prefix = concat!(#field_name, ".");
+                        let flatten_env_prefix = #flatten_prefix;
                         for tracked_path in __origins.tracked_fields() {
                             if tracked_path.starts_with(prefix) || tracked_path == #field_name {
-                                let nested_name = if tracked_path == #field_name {
-                                    tracked_path.to_string()
-                                } else {
-                                    tracked_path.to_string()
-                                };
+                                let nested_name = tracked_path.to_string();
 
+                                // Try to construct the likely env var name for this nested field
+                                // Convention: STRUCT_PREFIX + FLATTEN_PREFIX + FIELD_NAME (uppercased)
+                                let field_part = if tracked_path.starts_with(prefix) {
+                                    &tracked_path[prefix.len()..]
+                                } else {
+                                    tracked_path
+                                };
+                                let expected_env_var = format!(
+                                    "{}{}",
+                                    flatten_env_prefix,
+                                    field_part.to_uppercase().replace(".", "_")
+                                );
+
+                                // Determine source with priority: File > Env > NotSet
+                                // Note: Default tracking for nested fields requires runtime metadata
+                                // which is not currently available, so defaults fall back to NotSet
                                 let source = if let Some(file_path) = __origins.get_file_source(tracked_path) {
                                     ::procenv::Source::ConfigFile(Some(file_path))
+                                } else if std::env::var(&expected_env_var).is_ok() {
+                                    if __dotenv_loaded && !__pre_dotenv_vars.contains(expected_env_var.as_str()) {
+                                        ::procenv::Source::DotenvFile(None)
+                                    } else {
+                                        ::procenv::Source::Environment
+                                    }
                                 } else {
                                     ::procenv::Source::NotSet
                                 };
@@ -654,12 +688,25 @@ fn generate_profile_defaults_for_config(
     let profile_default_entries: Vec<QuoteStream> = generators
         .iter()
         .filter_map(|g| {
+            let field_name = g.name().to_string();
+
             if g.is_flatten() {
-                return None;
+                // For flatten fields, call the nested type's profile-aware defaults method
+                let ty = g.field_type()?;
+                return Some(quote! {
+                    // Merge nested profile defaults
+                    if let ::procenv::file::JsonValue::Object(nested) =
+                        <#ty>::__config_profile_defaults(__profile.as_deref())
+                    {
+                        __defaults.insert(
+                            #field_name.to_string(),
+                            ::procenv::file::JsonValue::Object(nested)
+                        );
+                    }
+                });
             }
 
             let profile_config = g.profile_config()?;
-            let field_name = g.name().to_string();
 
             // Generate match arms for each profile value
             let match_arms: Vec<QuoteStream> = profile_config
@@ -743,6 +790,97 @@ pub fn generate_config_defaults_impl(
         })
         .collect();
 
+    // Generate profile-specific default entries
+    let profile_entries: Vec<QuoteStream> = generators
+        .iter()
+        .filter_map(|g| {
+            if g.is_flatten() {
+                return None;
+            }
+
+            let profile_config = g.profile_config()?;
+            let field_name = g.name().to_string();
+
+            let match_arms: Vec<QuoteStream> = profile_config
+                .values
+                .iter()
+                .map(|(profile_name, value)| {
+                    quote! {
+                        std::option::Option::Some(#profile_name) => {
+                            __map.insert(
+                                #field_name.to_string(),
+                                ::procenv::FileUtils::coerce_value(#value)
+                            );
+                        }
+                    }
+                })
+                .collect();
+
+            Some(quote! {
+                match __profile {
+                    #(#match_arms)*
+                    _ => {}
+                }
+            })
+        })
+        .collect();
+
+    // Generate flatten entries with profile support
+    let flatten_profile_entries: Vec<QuoteStream> = generators
+        .iter()
+        .filter_map(|g| {
+            if !g.is_flatten() {
+                return None;
+            }
+
+            let field_name = g.name().to_string();
+            let ty = g.field_type()?;
+
+            Some(quote! {
+                if let ::procenv::file::JsonValue::Object(nested) =
+                    <#ty>::__config_profile_defaults(__profile)
+                {
+                    __map.insert(
+                        #field_name.to_string(),
+                        ::procenv::file::JsonValue::Object(nested)
+                    );
+                }
+            })
+        })
+        .collect();
+
+    // Generate env mapping entries for __env_mappings() method
+    let env_mapping_pairs: Vec<QuoteStream> = generators
+        .iter()
+        .filter_map(|g| {
+            if g.is_flatten() {
+                // For flatten fields, include nested mappings
+                let field_name = g.name().to_string();
+                let ty = g.field_type()?;
+                return Some(quote! {
+                    for (nested_field, nested_var) in <#ty>::__env_mappings() {
+                        __mappings.push((
+                            std::boxed::Box::leak(format!("{}.{}", #field_name, nested_field).into_boxed_str()),
+                            nested_var
+                        ));
+                    }
+                });
+            }
+
+            let env_var = g.env_var_name()?;
+            let field_name = g.name().to_string();
+            Some(quote! {
+                __mappings.push((#field_name, #env_var));
+            })
+        })
+        .collect();
+
+    let env_mapping_entries = quote! {
+        let mut __mappings: std::vec::Vec<(&'static str, &'static str)> = std::vec::Vec::new();
+        #(#env_mapping_pairs)*
+        __mappings
+    };
+
     quote! {
         // Only generate __config_defaults when file feature is enabled
         #[cfg(feature = "file")]
@@ -754,6 +892,26 @@ pub fn generate_config_defaults_impl(
                 #(#default_entries)*
                 #(#flatten_entries)*
                 ::procenv::file::JsonValue::Object(__map)
+            }
+
+            /// Returns default values including profile-specific defaults.
+            #[doc(hidden)]
+            pub fn __config_profile_defaults(__profile: std::option::Option<&str>) -> ::procenv::file::JsonValue {
+                let mut __map = ::procenv::file::JsonMap::new();
+                // Apply macro defaults first
+                #(#default_entries)*
+                // Apply profile-specific defaults (overrides macro defaults)
+                #(#profile_entries)*
+                // Include nested defaults with profile support
+                #(#flatten_profile_entries)*
+                ::procenv::file::JsonValue::Object(__map)
+            }
+
+            /// Returns field-to-env-var mappings for this config.
+            /// Used by parent configs to register nested env mappings.
+            #[doc(hidden)]
+            pub fn __env_mappings() -> std::vec::Vec<(&'static str, &'static str)> {
+                #env_mapping_entries
             }
         }
     }

@@ -278,20 +278,78 @@ fn generate_cli_aware_source_tracking(field: &dyn FieldGenerator) -> QuoteStream
 
     if let Some(env_var) = field.env_var_name() {
         if field.cli_config().is_some() {
-            // CLI-enabled field: check if value came from CLI
-            quote! {
-                let #source_ident = if #from_cli_var {
-                    ::procenv::ValueSource::new(#env_var, ::procenv::Source::Cli)
-                } else if #name.is_some() {
-                    if __dotenv_loaded && !__pre_dotenv_vars.contains(#env_var) {
-                        ::procenv::ValueSource::new(#env_var, ::procenv::Source::DotenvFile(None))
-                    } else {
-                        ::procenv::ValueSource::new(#env_var, ::procenv::Source::Environment)
+            // CLI-enabled field: check if value came from CLI, profile, env, or default
+            let has_profile = field.profile_config().is_some();
+            let has_default = field.default_value().is_some();
+
+            // Build source determination with proper priority:
+            // CLI > Profile > Env/Dotenv > Default > NotSet
+            // Note: We use tracking variables only when they're guaranteed to exist
+            if has_profile {
+                let profile_used_ident = format_ident!("__{}_from_profile", name);
+                let used_default_ident = format_ident!("__{}_used_default", name);
+
+                let default_check = if has_default {
+                    quote! {
+                        else if #used_default_ident {
+                            ::procenv::ValueSource::new(#env_var, ::procenv::Source::Default)
+                        }
                     }
                 } else {
-                    ::procenv::ValueSource::new(#env_var, ::procenv::Source::NotSet)
+                    quote! {}
                 };
-                __sources.add(#name_str, #source_ident);
+
+                quote! {
+                    let #source_ident = if #from_cli_var {
+                        ::procenv::ValueSource::new(#env_var, ::procenv::Source::Cli)
+                    } else if #profile_used_ident {
+                        ::procenv::ValueSource::new(
+                            #env_var,
+                            ::procenv::Source::Profile(__profile.clone().unwrap_or_default())
+                        )
+                    } else if std::env::var(#env_var).is_ok() {
+                        if __dotenv_loaded && !__pre_dotenv_vars.contains(#env_var) {
+                            ::procenv::ValueSource::new(#env_var, ::procenv::Source::DotenvFile(None))
+                        } else {
+                            ::procenv::ValueSource::new(#env_var, ::procenv::Source::Environment)
+                        }
+                    }
+                    #default_check
+                    else {
+                        ::procenv::ValueSource::new(#env_var, ::procenv::Source::NotSet)
+                    };
+                    __sources.add(#name_str, #source_ident);
+                }
+            } else {
+                // No profile config - simpler source tracking
+                // For fields with defaults, check if env var exists; if not, it's from Default
+                let default_fallback = if has_default {
+                    quote! {
+                        else if #name.is_some() {
+                            // Value exists but not from CLI or env - must be from default
+                            ::procenv::ValueSource::new(#env_var, ::procenv::Source::Default)
+                        }
+                    }
+                } else {
+                    quote! {}
+                };
+
+                quote! {
+                    let #source_ident = if #from_cli_var {
+                        ::procenv::ValueSource::new(#env_var, ::procenv::Source::Cli)
+                    } else if std::env::var(#env_var).is_ok() {
+                        if __dotenv_loaded && !__pre_dotenv_vars.contains(#env_var) {
+                            ::procenv::ValueSource::new(#env_var, ::procenv::Source::DotenvFile(None))
+                        } else {
+                            ::procenv::ValueSource::new(#env_var, ::procenv::Source::Environment)
+                        }
+                    }
+                    #default_fallback
+                    else {
+                        ::procenv::ValueSource::new(#env_var, ::procenv::Source::NotSet)
+                    };
+                    __sources.add(#name_str, #source_ident);
+                }
             }
         } else {
             // Non-CLI field: use standard source tracking
