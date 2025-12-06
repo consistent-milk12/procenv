@@ -658,12 +658,23 @@ struct ComplexAppConfig {
 #[serial]
 fn test_complex_three_level_defaults() {
     cleanup_env(&[
-        "COMPLEX_SERVER_HOST", "COMPLEX_SERVER_PORT",
-        "COMPLEX_DB_HOST", "COMPLEX_DB_PORT", "COMPLEX_DB_NAME", "COMPLEX_DB_MAX_CONNECTIONS",
-        "COMPLEX_DB_POOL_MIN_SIZE", "COMPLEX_DB_POOL_MAX_SIZE", "COMPLEX_DB_POOL_TIMEOUT",
-        "COMPLEX_CACHE_HOST", "COMPLEX_CACHE_PORT", "COMPLEX_CACHE_TTL",
-        "COMPLEX_LOG_LEVEL", "COMPLEX_LOG_FORMAT",
-        "COMPLEX_LOG_FILE_ENABLED", "COMPLEX_LOG_FILE_PATH", "COMPLEX_LOG_FILE_MAX_SIZE_MB",
+        "COMPLEX_SERVER_HOST",
+        "COMPLEX_SERVER_PORT",
+        "COMPLEX_DB_HOST",
+        "COMPLEX_DB_PORT",
+        "COMPLEX_DB_NAME",
+        "COMPLEX_DB_MAX_CONNECTIONS",
+        "COMPLEX_DB_POOL_MIN_SIZE",
+        "COMPLEX_DB_POOL_MAX_SIZE",
+        "COMPLEX_DB_POOL_TIMEOUT",
+        "COMPLEX_CACHE_HOST",
+        "COMPLEX_CACHE_PORT",
+        "COMPLEX_CACHE_TTL",
+        "COMPLEX_LOG_LEVEL",
+        "COMPLEX_LOG_FORMAT",
+        "COMPLEX_LOG_FILE_ENABLED",
+        "COMPLEX_LOG_FILE_PATH",
+        "COMPLEX_LOG_FILE_MAX_SIZE_MB",
     ]);
 
     let config = ComplexAppConfig::from_env().expect("should load with defaults");
@@ -702,12 +713,23 @@ fn test_complex_three_level_defaults() {
 #[serial]
 fn test_complex_three_level_full_override() {
     cleanup_env(&[
-        "COMPLEX_SERVER_HOST", "COMPLEX_SERVER_PORT",
-        "COMPLEX_DB_HOST", "COMPLEX_DB_PORT", "COMPLEX_DB_NAME", "COMPLEX_DB_MAX_CONNECTIONS",
-        "COMPLEX_DB_POOL_MIN_SIZE", "COMPLEX_DB_POOL_MAX_SIZE", "COMPLEX_DB_POOL_TIMEOUT",
-        "COMPLEX_CACHE_HOST", "COMPLEX_CACHE_PORT", "COMPLEX_CACHE_TTL",
-        "COMPLEX_LOG_LEVEL", "COMPLEX_LOG_FORMAT",
-        "COMPLEX_LOG_FILE_ENABLED", "COMPLEX_LOG_FILE_PATH", "COMPLEX_LOG_FILE_MAX_SIZE_MB",
+        "COMPLEX_SERVER_HOST",
+        "COMPLEX_SERVER_PORT",
+        "COMPLEX_DB_HOST",
+        "COMPLEX_DB_PORT",
+        "COMPLEX_DB_NAME",
+        "COMPLEX_DB_MAX_CONNECTIONS",
+        "COMPLEX_DB_POOL_MIN_SIZE",
+        "COMPLEX_DB_POOL_MAX_SIZE",
+        "COMPLEX_DB_POOL_TIMEOUT",
+        "COMPLEX_CACHE_HOST",
+        "COMPLEX_CACHE_PORT",
+        "COMPLEX_CACHE_TTL",
+        "COMPLEX_LOG_LEVEL",
+        "COMPLEX_LOG_FORMAT",
+        "COMPLEX_LOG_FILE_ENABLED",
+        "COMPLEX_LOG_FILE_PATH",
+        "COMPLEX_LOG_FILE_MAX_SIZE_MB",
     ]);
 
     with_env(
@@ -769,24 +791,36 @@ fn test_complex_three_level_full_override() {
 #[serial]
 fn test_complex_selective_override() {
     cleanup_env(&[
-        "COMPLEX_SERVER_HOST", "COMPLEX_SERVER_PORT",
-        "COMPLEX_DB_HOST", "COMPLEX_DB_PORT", "COMPLEX_DB_NAME", "COMPLEX_DB_MAX_CONNECTIONS",
-        "COMPLEX_DB_POOL_MIN_SIZE", "COMPLEX_DB_POOL_MAX_SIZE", "COMPLEX_DB_POOL_TIMEOUT",
-        "COMPLEX_CACHE_HOST", "COMPLEX_CACHE_PORT", "COMPLEX_CACHE_TTL",
-        "COMPLEX_LOG_LEVEL", "COMPLEX_LOG_FORMAT",
-        "COMPLEX_LOG_FILE_ENABLED", "COMPLEX_LOG_FILE_PATH", "COMPLEX_LOG_FILE_MAX_SIZE_MB",
+        "COMPLEX_SERVER_HOST",
+        "COMPLEX_SERVER_PORT",
+        "COMPLEX_DB_HOST",
+        "COMPLEX_DB_PORT",
+        "COMPLEX_DB_NAME",
+        "COMPLEX_DB_MAX_CONNECTIONS",
+        "COMPLEX_DB_POOL_MIN_SIZE",
+        "COMPLEX_DB_POOL_MAX_SIZE",
+        "COMPLEX_DB_POOL_TIMEOUT",
+        "COMPLEX_CACHE_HOST",
+        "COMPLEX_CACHE_PORT",
+        "COMPLEX_CACHE_TTL",
+        "COMPLEX_LOG_LEVEL",
+        "COMPLEX_LOG_FORMAT",
+        "COMPLEX_LOG_FILE_ENABLED",
+        "COMPLEX_LOG_FILE_PATH",
+        "COMPLEX_LOG_FILE_MAX_SIZE_MB",
     ]);
 
     // Only override some values at each level
     with_env(
         &[
-            ("COMPLEX_SERVER_PORT", "9000"),          // Level 2
-            ("COMPLEX_DB_HOST", "prod-db"),           // Level 2
-            ("COMPLEX_DB_POOL_MAX_SIZE", "100"),      // Level 3
-            ("COMPLEX_LOG_FILE_ENABLED", "true"),     // Level 3
+            ("COMPLEX_SERVER_PORT", "9000"),      // Level 2
+            ("COMPLEX_DB_HOST", "prod-db"),       // Level 2
+            ("COMPLEX_DB_POOL_MAX_SIZE", "100"),  // Level 3
+            ("COMPLEX_LOG_FILE_ENABLED", "true"), // Level 3
         ],
         || {
-            let config = ComplexAppConfig::from_env().expect("should load with selective overrides");
+            let config =
+                ComplexAppConfig::from_env().expect("should load with selective overrides");
 
             // Server: port overridden, host default
             assert_eq!(config.server.host, "127.0.0.1");
@@ -817,12 +851,23 @@ fn test_complex_selective_override() {
 #[serial]
 fn test_complex_source_attribution_deep() {
     cleanup_env(&[
-        "COMPLEX_SERVER_HOST", "COMPLEX_SERVER_PORT",
-        "COMPLEX_DB_HOST", "COMPLEX_DB_PORT", "COMPLEX_DB_NAME", "COMPLEX_DB_MAX_CONNECTIONS",
-        "COMPLEX_DB_POOL_MIN_SIZE", "COMPLEX_DB_POOL_MAX_SIZE", "COMPLEX_DB_POOL_TIMEOUT",
-        "COMPLEX_CACHE_HOST", "COMPLEX_CACHE_PORT", "COMPLEX_CACHE_TTL",
-        "COMPLEX_LOG_LEVEL", "COMPLEX_LOG_FORMAT",
-        "COMPLEX_LOG_FILE_ENABLED", "COMPLEX_LOG_FILE_PATH", "COMPLEX_LOG_FILE_MAX_SIZE_MB",
+        "COMPLEX_SERVER_HOST",
+        "COMPLEX_SERVER_PORT",
+        "COMPLEX_DB_HOST",
+        "COMPLEX_DB_PORT",
+        "COMPLEX_DB_NAME",
+        "COMPLEX_DB_MAX_CONNECTIONS",
+        "COMPLEX_DB_POOL_MIN_SIZE",
+        "COMPLEX_DB_POOL_MAX_SIZE",
+        "COMPLEX_DB_POOL_TIMEOUT",
+        "COMPLEX_CACHE_HOST",
+        "COMPLEX_CACHE_PORT",
+        "COMPLEX_CACHE_TTL",
+        "COMPLEX_LOG_LEVEL",
+        "COMPLEX_LOG_FORMAT",
+        "COMPLEX_LOG_FILE_ENABLED",
+        "COMPLEX_LOG_FILE_PATH",
+        "COMPLEX_LOG_FILE_MAX_SIZE_MB",
     ]);
 
     with_env(
@@ -832,8 +877,8 @@ fn test_complex_source_attribution_deep() {
             ("COMPLEX_LOG_FILE_ENABLED", "true"),
         ],
         || {
-            let (_config, sources) = ComplexAppConfig::from_env_with_sources()
-                .expect("should load with sources");
+            let (_config, sources) =
+                ComplexAppConfig::from_env_with_sources().expect("should load with sources");
 
             // Check server.port is from Environment
             let server_port_src = sources.get("server.port").expect("should have server.port");
@@ -850,7 +895,8 @@ fn test_complex_source_attribution_deep() {
             );
 
             // Check 3rd level: database.pool.max_size from Environment
-            let pool_max_src = sources.get("database.pool.max_size")
+            let pool_max_src = sources
+                .get("database.pool.max_size")
                 .expect("should have database.pool.max_size");
             assert!(
                 matches!(pool_max_src.source, procenv::Source::Environment),
@@ -858,7 +904,8 @@ fn test_complex_source_attribution_deep() {
             );
 
             // Check 3rd level: database.pool.min_size from Default
-            let pool_min_src = sources.get("database.pool.min_size")
+            let pool_min_src = sources
+                .get("database.pool.min_size")
                 .expect("should have database.pool.min_size");
             assert!(
                 matches!(pool_min_src.source, procenv::Source::Default),
@@ -866,7 +913,8 @@ fn test_complex_source_attribution_deep() {
             );
 
             // Check 3rd level: logging.file.enabled from Environment
-            let log_enabled_src = sources.get("logging.file.enabled")
+            let log_enabled_src = sources
+                .get("logging.file.enabled")
                 .expect("should have logging.file.enabled");
             assert!(
                 matches!(log_enabled_src.source, procenv::Source::Environment),
@@ -880,16 +928,27 @@ fn test_complex_source_attribution_deep() {
 #[serial]
 fn test_complex_count_all_fields() {
     cleanup_env(&[
-        "COMPLEX_SERVER_HOST", "COMPLEX_SERVER_PORT",
-        "COMPLEX_DB_HOST", "COMPLEX_DB_PORT", "COMPLEX_DB_NAME", "COMPLEX_DB_MAX_CONNECTIONS",
-        "COMPLEX_DB_POOL_MIN_SIZE", "COMPLEX_DB_POOL_MAX_SIZE", "COMPLEX_DB_POOL_TIMEOUT",
-        "COMPLEX_CACHE_HOST", "COMPLEX_CACHE_PORT", "COMPLEX_CACHE_TTL",
-        "COMPLEX_LOG_LEVEL", "COMPLEX_LOG_FORMAT",
-        "COMPLEX_LOG_FILE_ENABLED", "COMPLEX_LOG_FILE_PATH", "COMPLEX_LOG_FILE_MAX_SIZE_MB",
+        "COMPLEX_SERVER_HOST",
+        "COMPLEX_SERVER_PORT",
+        "COMPLEX_DB_HOST",
+        "COMPLEX_DB_PORT",
+        "COMPLEX_DB_NAME",
+        "COMPLEX_DB_MAX_CONNECTIONS",
+        "COMPLEX_DB_POOL_MIN_SIZE",
+        "COMPLEX_DB_POOL_MAX_SIZE",
+        "COMPLEX_DB_POOL_TIMEOUT",
+        "COMPLEX_CACHE_HOST",
+        "COMPLEX_CACHE_PORT",
+        "COMPLEX_CACHE_TTL",
+        "COMPLEX_LOG_LEVEL",
+        "COMPLEX_LOG_FORMAT",
+        "COMPLEX_LOG_FILE_ENABLED",
+        "COMPLEX_LOG_FILE_PATH",
+        "COMPLEX_LOG_FILE_MAX_SIZE_MB",
     ]);
 
-    let (_config, sources) = ComplexAppConfig::from_env_with_sources()
-        .expect("should load with sources");
+    let (_config, sources) =
+        ComplexAppConfig::from_env_with_sources().expect("should load with sources");
 
     // Count total fields: should be 17
     // Server: 2 (host, port)
@@ -956,9 +1015,18 @@ fn test_complex_error_accumulation() {
 
     // Should mention all missing fields
     assert!(err_str.contains("REQ_NAME"), "Should mention REQ_NAME");
-    assert!(err_str.contains("REQ_DB_HOST"), "Should mention REQ_DB_HOST");
-    assert!(err_str.contains("REQ_DB_POOL_MIN"), "Should mention REQ_DB_POOL_MIN");
-    assert!(err_str.contains("REQ_DB_POOL_MAX"), "Should mention REQ_DB_POOL_MAX");
+    assert!(
+        err_str.contains("REQ_DB_HOST"),
+        "Should mention REQ_DB_HOST"
+    );
+    assert!(
+        err_str.contains("REQ_DB_POOL_MIN"),
+        "Should mention REQ_DB_POOL_MIN"
+    );
+    assert!(
+        err_str.contains("REQ_DB_POOL_MAX"),
+        "Should mention REQ_DB_POOL_MAX"
+    );
 }
 
 #[test]
@@ -987,12 +1055,24 @@ fn test_complex_partial_error() {
             let err_str = format!("{err:?}");
 
             // Should NOT mention the fields we set
-            assert!(!err_str.contains("REQ_NAME="), "Should not complain about REQ_NAME");
-            assert!(!err_str.contains("REQ_DB_HOST="), "Should not complain about REQ_DB_HOST");
+            assert!(
+                !err_str.contains("REQ_NAME="),
+                "Should not complain about REQ_NAME"
+            );
+            assert!(
+                !err_str.contains("REQ_DB_HOST="),
+                "Should not complain about REQ_DB_HOST"
+            );
 
             // Should mention the missing pool fields
-            assert!(err_str.contains("REQ_DB_POOL_MIN"), "Should mention REQ_DB_POOL_MIN");
-            assert!(err_str.contains("REQ_DB_POOL_MAX"), "Should mention REQ_DB_POOL_MAX");
+            assert!(
+                err_str.contains("REQ_DB_POOL_MIN"),
+                "Should mention REQ_DB_POOL_MIN"
+            );
+            assert!(
+                err_str.contains("REQ_DB_POOL_MAX"),
+                "Should mention REQ_DB_POOL_MAX"
+            );
         },
     );
 }
@@ -1111,8 +1191,14 @@ fn test_mixed_types_parse_error() {
             let err_str = format!("{err:?}");
 
             // Should accumulate both parse errors
-            assert!(err_str.contains("MIX_CHILD_INT_VAL"), "Should mention INT_VAL");
-            assert!(err_str.contains("MIX_CHILD_FLOAT_VAL"), "Should mention FLOAT_VAL");
+            assert!(
+                err_str.contains("MIX_CHILD_INT_VAL"),
+                "Should mention INT_VAL"
+            );
+            assert!(
+                err_str.contains("MIX_CHILD_FLOAT_VAL"),
+                "Should mention FLOAT_VAL"
+            );
         },
     );
 }

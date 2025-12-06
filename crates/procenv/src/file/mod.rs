@@ -91,6 +91,7 @@ mod origin;
 mod utils;
 
 pub use builder::ConfigBuilder;
+pub use builder::DefaultsSerializationError;
 pub use error::FileError;
 pub use format::FileFormat;
 pub use origin::OriginTracker;

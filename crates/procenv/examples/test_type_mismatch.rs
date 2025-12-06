@@ -15,8 +15,8 @@
     clippy::result_large_err
 )]
 
-use procenv::serde::Deserialize;
 use procenv::ConfigBuilder;
+use procenv::serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 #[serde(crate = "procenv::serde")]

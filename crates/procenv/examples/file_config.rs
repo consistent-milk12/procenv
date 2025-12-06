@@ -248,7 +248,10 @@ fn main() {
 
     match config {
         Ok(config) => {
-            println!("   JSON:  name={}, port={}, db_host={}", config.name, config.port, config.database.host);
+            println!(
+                "   JSON:  name={}, port={}, db_host={}",
+                config.name, config.port, config.database.host
+            );
         }
         Err(e) => eprintln!("   JSON Error: {e}"),
     }
@@ -260,7 +263,10 @@ fn main() {
 
     match config {
         Ok(config) => {
-            println!("   YAML: name={}, port={}, db_host={}", config.name, config.port, config.database.host);
+            println!(
+                "   YAML: name={}, port={}, db_host={}",
+                config.name, config.port, config.database.host
+            );
         }
         Err(e) => eprintln!("   YAML Error: {e}"),
     }
@@ -272,7 +278,10 @@ fn main() {
 
     match config {
         Ok(config) => {
-            println!("   YML:  name={}, port={}, db_host={}", config.name, config.port, config.database.host);
+            println!(
+                "   YML:  name={}, port={}, db_host={}",
+                config.name, config.port, config.database.host
+            );
         }
         Err(e) => eprintln!("   YML Error: {e}"),
     }

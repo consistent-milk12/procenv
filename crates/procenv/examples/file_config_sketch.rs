@@ -81,10 +81,14 @@ fn toml_to_json(toml: procenv::toml::Value) -> Value {
     match toml {
         procenv::toml::Value::String(s) => Value::String(s),
         procenv::toml::Value::Integer(i) => Value::Number(i.into()),
-        procenv::toml::Value::Float(f) => Value::Number(procenv::serde_json::Number::from_f64(f).unwrap_or(0.into())),
+        procenv::toml::Value::Float(f) => {
+            Value::Number(procenv::serde_json::Number::from_f64(f).unwrap_or(0.into()))
+        }
         procenv::toml::Value::Boolean(b) => Value::Bool(b),
         procenv::toml::Value::Datetime(dt) => Value::String(dt.to_string()),
-        procenv::toml::Value::Array(arr) => Value::Array(arr.into_iter().map(toml_to_json).collect()),
+        procenv::toml::Value::Array(arr) => {
+            Value::Array(arr.into_iter().map(toml_to_json).collect())
+        }
         procenv::toml::Value::Table(table) => {
             let map: procenv::serde_json::Map<String, Value> = table
                 .into_iter()

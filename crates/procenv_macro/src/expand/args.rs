@@ -273,11 +273,7 @@ fn generate_cli_aware_loader(
 /// Generate source tracking that accounts for CLI values.
 ///
 /// Determines the source of a field's value with priority:
-/// CLI > Profile > Env/Dotenv > Default > NotSet
-#[expect(
-    clippy::option_if_let_else,
-    reason = "70+ lines of nested quote! blocks are far clearer with if-let than map_or_else closures"
-)]
+/// CLI > Profile > Env/Dotenv > Default > `NotSet`
 fn generate_cli_aware_source_tracking(field: &dyn FieldGenerator) -> QuoteStream {
     let name = field.name();
     let name_str = name.to_string();

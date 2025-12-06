@@ -216,55 +216,118 @@ pub fn generate_from_config_impl(
         }
     };
 
-    // Generate source tracking entries
+    // Generate source tracking entries for from_config_with_sources()
+    //
+    // IMPORTANT: This implementation tracks sources for ALL fields, including:
+    // - Regular fields (env, file, default, profile)
+    // - Flatten fields with nested sources (env, file, default, profile)
+    //
+    // The key insight is that we must enumerate ALL possible fields (not just
+    // those tracked by OriginTracker, which only tracks file sources) and then
+    // determine the source for each field by checking in priority order.
     let source_entries: Vec<QuoteStream> = generators
         .iter()
         .map(|g| {
             let field_name = g.name().to_string();
             let has_default = g.default_value().is_some();
+            let has_profile = g.profile_config().is_some();
 
             if g.is_flatten() {
-                // Get flatten prefix for env var construction
+                // =========================================================
+                // FLATTEN FIELD SOURCE TRACKING
+                // =========================================================
+                // For flatten fields, we must track sources for ALL nested
+                // fields, not just those that appear in file-tracked origins.
+                //
+                // IMPORTANT: Type extraction happens at COMPILE TIME (macro
+                // expansion), while the generated code runs at RUNTIME.
+                // We must extract the type outside the quote! block.
+
+                let Some(ty) = g.field_type() else {
+                    // No type available - skip source tracking for this field
+                    return quote! {};
+                };
+
                 let flatten_prefix = g.flatten_prefix().unwrap_or("");
 
                 quote! {
                     {
-                        let prefix = concat!(#field_name, ".");
+                        // Get the field name prefix for constructing dotted paths
+                        let base_prefix = #field_name;
                         let flatten_env_prefix = #flatten_prefix;
-                        for tracked_path in __origins.tracked_fields() {
-                            if tracked_path.starts_with(prefix) || tracked_path == #field_name {
-                                let nested_name = tracked_path.to_string();
 
-                                // Try to construct the likely env var name for this nested field
-                                // Convention: STRUCT_PREFIX + FLATTEN_PREFIX + FIELD_NAME (uppercased)
-                                let field_part = if tracked_path.starts_with(prefix) {
-                                    &tracked_path[prefix.len()..]
+                        // Track which fields we've already processed (to avoid duplicates)
+                        let mut processed_fields: std::collections::HashSet<std::string::String> =
+                            std::collections::HashSet::new();
+
+                        // STEP 1: Iterate over ALL known nested fields from env_mappings
+                        // This ensures we track every field, not just file-sourced ones
+                        for (nested_field, nested_var) in <#ty>::__env_mappings() {
+                            // Construct the full dotted path (e.g., "database.host")
+                            let full_path = format!("{}.{}", base_prefix, nested_field);
+
+                            // Skip if already processed
+                            if processed_fields.contains(&full_path) {
+                                continue;
+                            }
+                            processed_fields.insert(full_path.clone());
+
+                            // Construct the expected env var name with flatten prefix
+                            let expected_env_var = format!("{}{}", flatten_env_prefix, nested_var);
+
+                            // Determine source with correct priority order:
+                            // 1. Environment variable (highest priority)
+                            // 2. Dotenv file (if dotenv loaded and var wasn't pre-set)
+                            // 3. Config file (check origin tracker)
+                            // 4. Profile/Default (requires nested metadata - not yet available)
+                            // 5. NotSet
+                            let source = if std::env::var(&expected_env_var).is_ok() {
+                                // Value came from environment
+                                if __dotenv_loaded && !__pre_dotenv_vars.contains(expected_env_var.as_str()) {
+                                    // Env var was loaded from .env file
+                                    ::procenv::Source::DotenvFile(None)
                                 } else {
-                                    tracked_path
-                                };
-                                let expected_env_var = format!(
-                                    "{}{}",
-                                    flatten_env_prefix,
-                                    field_part.to_uppercase().replace(".", "_")
-                                );
+                                    // Env var was set before dotenv loading
+                                    ::procenv::Source::Environment
+                                }
+                            } else if let Some(file_path) = __origins.get_file_source(&full_path) {
+                                // Value came from a config file
+                                ::procenv::Source::ConfigFile(Some(file_path))
+                            } else {
+                                // No env var or file source
+                                // NOTE: Full profile/default tracking for nested fields requires
+                                // additional metadata propagation. For now, mark as NotSet.
+                                ::procenv::Source::NotSet
+                            };
 
-                                // Determine source with priority: File > Env > NotSet
-                                // Note: Default tracking for nested fields requires runtime metadata
-                                // which is not currently available, so defaults fall back to NotSet
+                            __sources.add(
+                                full_path,
+                                ::procenv::ValueSource::new(&expected_env_var, source)
+                            );
+                        }
+
+                        // STEP 2: Also check file-tracked origins for any paths we might have missed
+                        // (This handles cases where the file has keys not in env_mappings)
+                        let prefix_dot = format!("{}.", #field_name);
+                        for tracked_path in __origins.tracked_fields() {
+                            if tracked_path.starts_with(&prefix_dot) || tracked_path == #field_name {
+                                let full_path = tracked_path.to_string();
+
+                                // Skip if already processed via env_mappings
+                                if processed_fields.contains(&full_path) {
+                                    continue;
+                                }
+                                processed_fields.insert(full_path.clone());
+
+                                // For file-tracked paths not in env_mappings, source is ConfigFile
                                 let source = if let Some(file_path) = __origins.get_file_source(tracked_path) {
                                     ::procenv::Source::ConfigFile(Some(file_path))
-                                } else if std::env::var(&expected_env_var).is_ok() {
-                                    if __dotenv_loaded && !__pre_dotenv_vars.contains(expected_env_var.as_str()) {
-                                        ::procenv::Source::DotenvFile(None)
-                                    } else {
-                                        ::procenv::Source::Environment
-                                    }
                                 } else {
                                     ::procenv::Source::NotSet
                                 };
 
                                 __sources.add(
-                                    nested_name,
+                                    full_path,
                                     ::procenv::ValueSource::new(tracked_path, source)
                                 );
                             }
@@ -272,23 +335,44 @@ pub fn generate_from_config_impl(
                     }
                 }
             } else {
+                // =========================================================
+                // REGULAR FIELD SOURCE TRACKING (with Profile support)
+                // =========================================================
                 let env_var = g.env_var_name().unwrap_or("");
 
                 quote! {
                     {
+                        // Determine source with correct priority order:
+                        // 1. Environment variable (highest priority)
+                        // 2. Dotenv file
+                        // 3. Config file
+                        // 4. Profile default (if profile is active AND field has profile config)
+                        // 5. Regular default
+                        // 6. NotSet (for optional fields without value)
                         let source = if std::env::var(#env_var).is_ok() {
+                            // Value came from environment variable
                             if __dotenv_loaded && !__pre_dotenv_vars.contains(#env_var) {
+                                // Var was loaded from .env file (not set before dotenv)
                                 ::procenv::Source::DotenvFile(None)
                             } else {
+                                // Var was set in actual environment
                                 ::procenv::Source::Environment
                             }
                         } else if let Some(file_path) = __origins.get_file_source(#field_name) {
+                            // Value came from a config file
                             ::procenv::Source::ConfigFile(Some(file_path))
+                        } else if let Some(ref __p) = __profile && #has_profile {
+                            // Value came from a profile-specific default
+                            // Uses if-let chains (Rust 2024 edition)
+                            ::procenv::Source::Profile(__p.clone())
                         } else if #has_default {
+                            // Value came from compile-time default (#[env(default = "...")])
                             ::procenv::Source::Default
                         } else {
+                            // No value source (for optional fields that are None)
                             ::procenv::Source::NotSet
                         };
+
                         __sources.add(
                             #field_name,
                             ::procenv::ValueSource::new(#env_var, source)

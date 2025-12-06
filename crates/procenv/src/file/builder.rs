@@ -100,6 +100,14 @@ impl ConfigBuilder {
     /// These defaults are the base layer and will be overridden by
     /// config files and environment variables.
     ///
+    /// # Panics
+    ///
+    /// Panics if the defaults cannot be serialized to JSON. This can happen if:
+    /// - The type contains non-serializable fields (e.g., function pointers)
+    /// - Custom `Serialize` implementation returns an error
+    ///
+    /// Use [`try_defaults()`](Self::try_defaults) for fallible serialization.
+    ///
     /// # Example
     ///
     /// ```rust,ignore
@@ -113,12 +121,45 @@ impl ConfigBuilder {
     ///     .defaults(Defaults { port: 8080, debug: false });
     /// ```
     #[must_use]
-    pub fn defaults<T: Serialize>(mut self, defaults: T) -> Self {
-        if let Ok(value) = SJSON::to_value(defaults) {
-            self.base = value;
-        }
+    pub fn defaults<T: Serialize>(self, defaults: T) -> Self {
+        self.try_defaults(defaults).unwrap_or_else(|e| {
+            panic!(
+                "ConfigBuilder::defaults() serialization failed: {e}. \
+                 Use try_defaults() for fallible handling."
+            )
+        })
+    }
 
-        self
+    /// Sets default values from a serializable struct (fallible version).
+    ///
+    /// Unlike [`defaults()`](Self::defaults), this method returns a `Result`
+    /// instead of panicking on serialization failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the defaults cannot be serialized to JSON.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// #[derive(Serialize)]
+    /// struct Defaults {
+    ///     port: u16,
+    ///     debug: bool,
+    /// }
+    ///
+    /// let builder = ConfigBuilder::new()
+    ///     .try_defaults(Defaults { port: 8080, debug: false })?;
+    /// ```
+    pub fn try_defaults<T: Serialize>(
+        mut self,
+        defaults: T,
+    ) -> Result<Self, DefaultsSerializationError> {
+        self.base = SJSON::to_value(&defaults).map_err(|e| DefaultsSerializationError {
+            type_name: std::any::type_name::<T>().to_string(),
+            inner: e.to_string(),
+        })?;
+        Ok(self)
     }
 
     /// Sets default values from a raw JSON value.
@@ -417,3 +458,31 @@ impl ConfigBuilder {
         Ok((result, origins))
     }
 }
+
+/// Error returned when [`ConfigBuilder::try_defaults()`] fails to serialize.
+///
+/// This error occurs when the provided defaults struct cannot be converted
+/// to a JSON value. Common causes include:
+///
+/// - Non-serializable field types (e.g., function pointers, raw pointers)
+/// - Custom `Serialize` implementations that return errors
+/// - Recursive or cyclic data structures without proper handling
+#[derive(Debug, Clone)]
+pub struct DefaultsSerializationError {
+    /// The type name that failed to serialize (from `std::any::type_name`).
+    pub type_name: String,
+    /// The underlying serialization error message.
+    pub inner: String,
+}
+
+impl std::fmt::Display for DefaultsSerializationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "failed to serialize defaults of type '{}': {}",
+            self.type_name, self.inner
+        )
+    }
+}
+
+impl std::error::Error for DefaultsSerializationError {}

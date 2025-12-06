@@ -107,7 +107,10 @@ debug = true
     let _path = write_file("serde_free_basic.toml", content);
 
     #[derive(EnvConfig)]
-    #[env_config(prefix = "SFTOML_", file_optional = "/tmp/procenv_serde_free_tests/serde_free_basic.toml")]
+    #[env_config(
+        prefix = "SFTOML_",
+        file_optional = "/tmp/procenv_serde_free_tests/serde_free_basic.toml"
+    )]
     struct TomlConfig {
         #[env(var = "NAME", default = "default")]
         name: String,
@@ -136,7 +139,10 @@ fn test_config_from_json_file() {
     write_file("serde_free_basic.json", content);
 
     #[derive(EnvConfig)]
-    #[env_config(prefix = "SFJSON_", file_optional = "/tmp/procenv_serde_free_tests/serde_free_basic.json")]
+    #[env_config(
+        prefix = "SFJSON_",
+        file_optional = "/tmp/procenv_serde_free_tests/serde_free_basic.json"
+    )]
     struct JsonConfig {
         #[env(var = "HOST", default = "localhost")]
         host: String,
@@ -164,7 +170,10 @@ port: 5000
     write_file("serde_free_basic.yaml", content);
 
     #[derive(EnvConfig)]
-    #[env_config(prefix = "SFYAML_", file_optional = "/tmp/procenv_serde_free_tests/serde_free_basic.yaml")]
+    #[env_config(
+        prefix = "SFYAML_",
+        file_optional = "/tmp/procenv_serde_free_tests/serde_free_basic.yaml"
+    )]
     struct YamlConfig {
         #[env(var = "NAME", default = "default")]
         name: String,
@@ -213,7 +222,10 @@ fn test_optional_fields_present() {
     write_file("serde_free_optional.json", content);
 
     #[derive(EnvConfig)]
-    #[env_config(prefix = "SFOPT2_", file_optional = "/tmp/procenv_serde_free_tests/serde_free_optional.json")]
+    #[env_config(
+        prefix = "SFOPT2_",
+        file_optional = "/tmp/procenv_serde_free_tests/serde_free_optional.json"
+    )]
     struct OptionalPresentConfig {
         #[env(var = "NAME")]
         name: String,
@@ -288,7 +300,10 @@ port = 5433
     }
 
     #[derive(EnvConfig)]
-    #[env_config(prefix = "SFNESTF_", file_optional = "/tmp/procenv_serde_free_tests/serde_free_nested.toml")]
+    #[env_config(
+        prefix = "SFNESTF_",
+        file_optional = "/tmp/procenv_serde_free_tests/serde_free_nested.toml"
+    )]
     struct NestedFileConfig {
         #[env(var = "APP_NAME", default = "default")]
         app_name: String,
@@ -318,7 +333,10 @@ fn test_env_overrides_file_values() {
     write_file("serde_free_override.json", content);
 
     #[derive(EnvConfig)]
-    #[env_config(prefix = "SFOVER_", file_optional = "/tmp/procenv_serde_free_tests/serde_free_override.json")]
+    #[env_config(
+        prefix = "SFOVER_",
+        file_optional = "/tmp/procenv_serde_free_tests/serde_free_override.json"
+    )]
     struct OverrideConfig {
         #[env(var = "HOST")]
         host: String,
@@ -353,7 +371,10 @@ fn test_source_attribution_without_serde() {
     write_file("serde_free_sources.toml", content);
 
     #[derive(EnvConfig)]
-    #[env_config(prefix = "SFSRC_", file_optional = "/tmp/procenv_serde_free_tests/serde_free_sources.toml")]
+    #[env_config(
+        prefix = "SFSRC_",
+        file_optional = "/tmp/procenv_serde_free_tests/serde_free_sources.toml"
+    )]
     struct SourceConfig {
         #[env(var = "NAME")]
         name: String,
@@ -362,8 +383,8 @@ fn test_source_attribution_without_serde() {
         port: u16,
     }
 
-    let (config, sources) = SourceConfig::from_config_with_sources()
-        .expect("should load with sources");
+    let (config, sources) =
+        SourceConfig::from_config_with_sources().expect("should load with sources");
 
     assert_eq!(config.name, "from-file");
     assert_eq!(config.port, 8080);
@@ -416,7 +437,10 @@ fn test_parse_error_on_invalid_type() {
     write_file("serde_free_parse_error.json", content);
 
     #[derive(EnvConfig)]
-    #[env_config(prefix = "SFPARSE_", file_optional = "/tmp/procenv_serde_free_tests/serde_free_parse_error.json")]
+    #[env_config(
+        prefix = "SFPARSE_",
+        file_optional = "/tmp/procenv_serde_free_tests/serde_free_parse_error.json"
+    )]
     struct ParseConfig {
         #[env(var = "PORT")]
         port: u16,
@@ -434,7 +458,13 @@ fn test_parse_error_on_invalid_type() {
 
 #[test]
 fn test_various_types() {
-    cleanup_env(&["SFTYPE_STR", "SFTYPE_U8", "SFTYPE_I32", "SFTYPE_F64", "SFTYPE_BOOL"]);
+    cleanup_env(&[
+        "SFTYPE_STR",
+        "SFTYPE_U8",
+        "SFTYPE_I32",
+        "SFTYPE_F64",
+        "SFTYPE_BOOL",
+    ]);
 
     let content = r#"
 str_val = "hello"
@@ -446,7 +476,10 @@ bool_val = true
     write_file("serde_free_types.toml", content);
 
     #[derive(EnvConfig)]
-    #[env_config(prefix = "SFTYPE_", file_optional = "/tmp/procenv_serde_free_tests/serde_free_types.toml")]
+    #[env_config(
+        prefix = "SFTYPE_",
+        file_optional = "/tmp/procenv_serde_free_tests/serde_free_types.toml"
+    )]
     struct TypesConfig {
         #[env(var = "STR", default = "")]
         str_val: String,
